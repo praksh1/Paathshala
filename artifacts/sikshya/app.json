@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Sikshya",
-    "slug": "sikshya",
+    "name": "Guru",
+    "slug": "guru",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "sikshya",
+    "scheme": "guru",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.sikshya.app"
+      "bundleIdentifier": "com.guru.app"
     },
     "android": {
-      "package": "com.sikshya.app",
+      "package": "com.guru.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#1A365D"
