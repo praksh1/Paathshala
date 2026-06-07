@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "expo-document-picker": "^56.0.4",
+    "expo-notifications": "^56.0.16",
     "react-native-webview": "^13.16.1"
   }
 }

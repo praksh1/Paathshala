@@ -1,0 +1,102 @@
+import * as Notifications from "expo-notifications";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Platform } from "react-native";
+
+import {
+  getNotifications,
+  getUnreadCount,
+  markAllRead,
+  requestNotificationPermissions,
+  seedSampleNotifications,
+  type AppNotification,
+} from "@/utils/notifications";
+
+interface NotificationContextType {
+  notifications: AppNotification[];
+  unreadCount: number;
+  hasPermission: boolean;
+  refresh: () => Promise<void>;
+  markRead: () => Promise<void>;
+}
+
+const NotificationContext = createContext<NotificationContextType>({
+  notifications: [],
+  unreadCount: 0,
+  hasPermission: false,
+  refresh: async () => {},
+  markRead: async () => {},
+});
+
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowList: true,
+    }),
+  });
+}
+
+export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [hasPermission, setHasPermission] = useState(false);
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const responseListener = useRef<Notifications.EventSubscription | null>(null);
+
+  const refresh = useCallback(async () => {
+    const notifs = await getNotifications();
+    const count = await getUnreadCount();
+    setNotifications(notifs);
+    setUnreadCount(count);
+  }, []);
+
+  const markRead = useCallback(async () => {
+    await markAllRead();
+    await refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const init = async () => {
+      await seedSampleNotifications();
+
+      const granted = await requestNotificationPermissions();
+      setHasPermission(granted);
+
+      await refresh();
+
+      if (Platform.OS !== "web") {
+        notificationListener.current = Notifications.addNotificationReceivedListener(async (_notification) => {
+          await refresh();
+        });
+
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(async (_response) => {
+          await refresh();
+        });
+      }
+    };
+
+    init();
+
+    return () => {
+      notificationListener.current?.remove();
+      responseListener.current?.remove();
+    };
+  }, [refresh]);
+
+  return (
+    <NotificationContext.Provider value={{ notifications, unreadCount, hasPermission, refresh, markRead }}>
+      {children}
+    </NotificationContext.Provider>
+  );
+};
+
+export const useNotifications = () => useContext(NotificationContext);

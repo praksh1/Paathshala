@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { SESSIONS_KEY } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useNotifications } from "@/context/NotificationContext";
+import { scheduleSessionReminder } from "@/utils/notifications";
 import type { Teacher } from "@/context/AuthContext";
 
 const SUBJECTS = ["Mathematics", "Science", "English", "Nepali", "Computer Science", "History", "Geography", "Economics"];
@@ -39,6 +41,7 @@ export default function SessionCreate() {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [saving, setSaving] = useState(false);
+  const { refresh: refreshNotifs } = useNotifications();
 
   const handleCreate = async () => {
     if (!topic.trim() || !date.trim() || !time.trim()) {
@@ -64,6 +67,8 @@ export default function SessionCreate() {
         status: "upcoming",
       };
       await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify([...sessions, newSession]));
+      await scheduleSessionReminder({ id: newSession.id, topic: newSession.topic, date: newSession.date });
+      await refreshNotifs();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();
     } catch (_e) {

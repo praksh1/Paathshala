@@ -1,11 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useNotifications } from "@/context/NotificationContext";
+import { sendDemoNotification } from "@/utils/notifications";
 import type { Teacher } from "@/context/AuthContext";
 
 const UPCOMING_SESSIONS = [
@@ -17,7 +19,14 @@ export default function TeacherDashboard() {
   const { user, logout } = useAuth();
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { unreadCount, refresh: refreshNotifs } = useNotifications();
   const teacher = user as Teacher;
+
+  useEffect(() => {
+    refreshNotifs();
+    sendDemoNotification();
+  }, []);
+
   if (!teacher) return null;
 
   const isPending = teacher.approvalStatus === "pending";
@@ -34,13 +43,27 @@ export default function TeacherDashboard() {
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Namaste,</Text>
           <Text style={[styles.name, { color: colors.foreground }]}>{teacher.name}</Text>
         </View>
-        <TouchableOpacity
-          style={[styles.logoutBtn, { borderColor: colors.border }]}
-          onPress={logout}
-          activeOpacity={0.7}
-        >
-          <Feather name="log-out" size={18} color={colors.mutedForeground} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.iconBtn, { borderColor: colors.border }]}
+            onPress={() => router.push("/notifications")}
+            activeOpacity={0.7}
+          >
+            <Feather name="bell" size={18} color={colors.foreground} />
+            {unreadCount > 0 && (
+              <View style={[styles.bellBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.iconBtn, { borderColor: colors.border }]}
+            onPress={logout}
+            activeOpacity={0.7}
+          >
+            <Feather name="log-out" size={18} color={colors.mutedForeground} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {isPending && (
@@ -160,7 +183,10 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   greeting: { fontSize: 14, fontFamily: "Inter_400Regular" },
   name: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
-  logoutBtn: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, justifyContent: "center", alignItems: "center" },
+  headerActions: { flexDirection: "row", gap: 8 },
+  iconBtn: { width: 40, height: 40, borderRadius: 12, borderWidth: 1, justifyContent: "center", alignItems: "center" },
+  bellBadge: { position: "absolute", top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, justifyContent: "center", alignItems: "center", paddingHorizontal: 3 },
+  bellBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" },
   alertBanner: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderRadius: 14, borderWidth: 1, padding: 14 },
   alertText: { flex: 1 },
   alertTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", marginBottom: 2 },

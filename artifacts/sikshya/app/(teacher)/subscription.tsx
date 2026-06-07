@@ -6,6 +6,8 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "rea
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
+import { useNotifications } from "@/context/NotificationContext";
+import { addInAppNotification } from "@/utils/notifications";
 import type { Teacher } from "@/context/AuthContext";
 
 const PAYMENT_HISTORY = [
@@ -20,6 +22,7 @@ export default function Subscription() {
   const insets = useSafeAreaInsets();
   const teacher = user as Teacher;
   const [selectedMethod, setSelectedMethod] = useState<"esewa" | "khalti">("esewa");
+  const { refresh: refreshNotifs } = useNotifications();
 
   const sessionsUsed = teacher?.sessionsThisMonth ?? 0;
   const sessionsRemaining = 10 - sessionsUsed;
@@ -32,7 +35,18 @@ export default function Subscription() {
       `You will be redirected to ${selectedMethod === "esewa" ? "eSewa" : "Khalti"} to complete your NPR 2,000 payment for the monthly subscription.`,
       [
         { text: "Cancel", style: "cancel" },
-        { text: "Proceed", onPress: () => Alert.alert("Success", "Payment integration will be live soon!") },
+        {
+          text: "Proceed",
+          onPress: async () => {
+            await addInAppNotification({
+              title: "Subscription Payment Confirmed",
+              body: `NPR 2,000 paid via ${selectedMethod === "esewa" ? "eSewa" : "Khalti"}. Your Sikshya Pro plan is active for July 2025.`,
+              type: "payment",
+            });
+            await refreshNotifs();
+            Alert.alert("Payment Successful!", "Your Sikshya Pro subscription is now active. Happy teaching!");
+          },
+        },
       ]
     );
   };

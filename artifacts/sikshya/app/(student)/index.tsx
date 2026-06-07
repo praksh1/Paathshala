@@ -6,6 +6,7 @@ import { FlatList, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, Vi
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useColors } from "@/hooks/useColors";
+import { useNotifications } from "@/context/NotificationContext";
 import { TEACHERS_KEY, SAMPLE_TEACHERS } from "@/context/AuthContext";
 import TeacherCard from "@/components/TeacherCard";
 import type { Teacher } from "@/context/AuthContext";
@@ -15,6 +16,7 @@ const SUBJECTS = ["All", "Mathematics", "Science", "English", "Nepali", "Compute
 export default function Discover() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { unreadCount } = useNotifications();
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("All");
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -43,10 +45,26 @@ export default function Discover() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={[styles.title, { color: colors.foreground }]}>Find Teachers</Text>
-        <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-          Nepal's best verified teachers
-        </Text>
+        <View style={styles.titleRow}>
+          <View>
+            <Text style={[styles.title, { color: colors.foreground }]}>Find Teachers</Text>
+            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+              Nepal's best verified teachers
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.bellBtn, { borderColor: colors.border }]}
+            onPress={() => router.push("/notifications")}
+            activeOpacity={0.7}
+          >
+            <Feather name="bell" size={20} color={colors.foreground} />
+            {unreadCount > 0 && (
+              <View style={[styles.bellBadge, { backgroundColor: colors.secondary }]}>
+                <Text style={styles.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
         <View style={[styles.searchBar, { backgroundColor: colors.muted, borderColor: colors.border }]}>
           <Feather name="search" size={17} color={colors.mutedForeground} />
           <TextInput
@@ -117,8 +135,12 @@ export default function Discover() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, gap: 12, paddingBottom: 8 },
+  titleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   title: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   subtitle: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  bellBtn: { width: 42, height: 42, borderRadius: 12, borderWidth: 1, justifyContent: "center", alignItems: "center" },
+  bellBadge: { position: "absolute", top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, justifyContent: "center", alignItems: "center", paddingHorizontal: 3 },
+  bellBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: "#fff" },
   searchBar: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 16, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 13 },
   searchInput: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
   chips: { paddingBottom: 4, gap: 8 },
