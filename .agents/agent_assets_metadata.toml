@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "38HCj_gbcSv79ZBcoUyC3"
+uri = "file://artifacts/sikshya/assets/images/icon.png"
+type = "image"
+title = "sikshya app icon"
+
+[[generated]]
+id = "ONPCuNKRlamSlSTSDsn1P"
+uri = "file://artifacts/sikshya/assets/images/hero_classroom.png"
+type = "image"
+title = "nepal classroom hero"
+
+[[generated]]
+id = "cCyKHwLN_GG-D14lzgNIp"
+uri = "file://artifacts/sikshya/assets/images/hero_whiteboard.png"
+type = "image"
+title = "digital whiteboard hero"

@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Sikshya",
+    "slug": "sikshya",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "sikshya",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A365D"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.sikshya.app"
+    },
+    "android": {
+      "package": "com.sikshya.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#1A365D"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Sikshya needs access to your photos to upload credential documents.",
+          "cameraPermission": "Sikshya needs access to your camera to capture credential documents."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

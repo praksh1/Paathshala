@@ -1,0 +1,260 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
+import React, { useState } from "react";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "@/context/AuthContext";
+import { SESSIONS_KEY } from "@/context/AuthContext";
+import { useColors } from "@/hooks/useColors";
+import type { Teacher } from "@/context/AuthContext";
+
+const SUBJECTS = ["Mathematics", "Science", "English", "Nepali", "Computer Science", "History", "Geography", "Economics"];
+const DURATIONS = [30, 45, 60];
+const MAX_STUDENTS_OPTIONS = [5, 10, 15, 20];
+
+export default function SessionCreate() {
+  const { user } = useAuth();
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const teacher = user as Teacher;
+
+  const [subject, setSubject] = useState(teacher?.subject ?? "Mathematics");
+  const [topic, setTopic] = useState("");
+  const [description, setDescription] = useState("");
+  const [duration, setDuration] = useState(60);
+  const [maxStudents, setMaxStudents] = useState(20);
+  const [price, setPrice] = useState("500");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleCreate = async () => {
+    if (!topic.trim() || !date.trim() || !time.trim()) {
+      Alert.alert("Missing Info", "Please fill in topic, date, and time.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const stored = await AsyncStorage.getItem(SESSIONS_KEY);
+      const sessions = stored ? JSON.parse(stored) : [];
+      const newSession = {
+        id: "session_" + Date.now(),
+        teacherId: teacher.id,
+        teacherName: teacher.name,
+        subject,
+        topic: topic.trim(),
+        description: description.trim(),
+        date: new Date(`${date}T${time}:00`).toISOString(),
+        duration,
+        maxStudents,
+        enrolledStudents: [] as string[],
+        price: parseInt(price) || 500,
+        status: "upcoming",
+      };
+      await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify([...sessions, newSession]));
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
+    } catch (_e) {
+      Alert.alert("Error", "Failed to create session. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView
+        style={{ backgroundColor: colors.background }}
+        contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 40 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Feather name="x" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.foreground }]}>New Session</Text>
+          <View style={{ width: 38 }} />
+        </View>
+
+        <Section title="Subject">
+          <View style={styles.chipGrid}>
+            {SUBJECTS.map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={[styles.chip, { borderColor: subject === s ? colors.primary : colors.border, backgroundColor: subject === s ? colors.primary + "12" : colors.muted }]}
+                onPress={() => setSubject(s)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.chipText, { color: subject === s ? colors.primary : colors.mutedForeground }]}>{s}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Section>
+
+        <Section title="Session Topic *">
+          <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.foreground }]}
+              placeholder="e.g. Calculus: Introduction to Derivatives"
+              placeholderTextColor={colors.mutedForeground}
+              value={topic}
+              onChangeText={setTopic}
+            />
+          </View>
+        </Section>
+
+        <Section title="Description">
+          <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <TextInput
+              style={[styles.input, { color: colors.foreground, minHeight: 70 }]}
+              placeholder="What will students learn in this session?"
+              placeholderTextColor={colors.mutedForeground}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              textAlignVertical="top"
+            />
+          </View>
+        </Section>
+
+        <View style={styles.row}>
+          <View style={{ flex: 1 }}>
+            <Section title="Date *">
+              <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="calendar" size={16} color={colors.mutedForeground} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={date}
+                  onChangeText={setDate}
+                />
+              </View>
+            </Section>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Section title="Time *">
+              <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+                <Feather name="clock" size={16} color={colors.mutedForeground} style={{ marginRight: 8 }} />
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="HH:MM"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={time}
+                  onChangeText={setTime}
+                />
+              </View>
+            </Section>
+          </View>
+        </View>
+
+        <Section title="Duration (max 60 min)">
+          <View style={styles.chipRow}>
+            {DURATIONS.map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={[styles.pillChip, { borderColor: duration === d ? colors.primary : colors.border, backgroundColor: duration === d ? colors.primary : colors.muted }]}
+                onPress={() => setDuration(d)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.pillText, { color: duration === d ? "#fff" : colors.mutedForeground }]}>{d} min</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Section>
+
+        <Section title="Max Students (max 20)">
+          <View style={styles.chipRow}>
+            {MAX_STUDENTS_OPTIONS.map((n) => (
+              <TouchableOpacity
+                key={n}
+                style={[styles.pillChip, { borderColor: maxStudents === n ? colors.primary : colors.border, backgroundColor: maxStudents === n ? colors.primary : colors.muted }]}
+                onPress={() => setMaxStudents(n)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.pillText, { color: maxStudents === n ? "#fff" : colors.mutedForeground }]}>{n}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Section>
+
+        <Section title="Session Price (NPR)">
+          <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+            <Text style={[styles.currency, { color: colors.mutedForeground }]}>NPR</Text>
+            <TextInput
+              style={[styles.input, { color: colors.foreground }]}
+              placeholder="500"
+              placeholderTextColor={colors.mutedForeground}
+              value={price}
+              onChangeText={setPrice}
+              keyboardType="numeric"
+            />
+          </View>
+        </Section>
+
+        <View style={[styles.summaryBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+          <Feather name="info" size={15} color={colors.mutedForeground} />
+          <Text style={[styles.summaryText, { color: colors.mutedForeground }]}>
+            Sikshya records all sessions. Copyrights belong to the platform. Student payments are processed securely via eSewa/Khalti.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.createBtn, { backgroundColor: colors.primary }, saving && { opacity: 0.7 }]}
+          onPress={handleCreate}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Feather name="check" size={20} color="#fff" />
+          <Text style={styles.createBtnText}>{saving ? "Creating..." : "Create Session"}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const colors = useColors();
+  return (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{title}</Text>
+      {children}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { paddingHorizontal: 20, gap: 20 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  backBtn: { width: 38, height: 38, justifyContent: "center" },
+  title: { fontSize: 20, fontFamily: "Inter_700Bold" },
+  section: { gap: 10 },
+  sectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 7 },
+  chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  inputWrap: { flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 13 },
+  input: { flex: 1, fontSize: 15, fontFamily: "Inter_400Regular" },
+  currency: { fontSize: 15, fontFamily: "Inter_600SemiBold", marginRight: 8 },
+  row: { flexDirection: "row", gap: 12 },
+  chipRow: { flexDirection: "row", gap: 10 },
+  pillChip: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 18, paddingVertical: 9 },
+  pillText: { fontSize: 14, fontFamily: "Inter_500Medium" },
+  summaryBox: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderRadius: 14, borderWidth: 1, padding: 14 },
+  summaryText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19 },
+  createBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, paddingVertical: 17 },
+  createBtnText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#fff" },
+});

@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "Sikshya — Nepal Teacher Platform"
+version = "1.0.0"
+id = "artifacts/sikshya"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/" ]
+localPort = 22743
+
+[services.development]
+run = "pnpm --filter @workspace/sikshya run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/sikshya", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/sikshya", "run", "serve" ]
+
+[services.env]
+PORT = "22743"
+BASE_PATH = "/"
