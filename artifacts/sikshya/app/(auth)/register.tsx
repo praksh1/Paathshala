@@ -61,7 +61,11 @@ export default function Register() {
     setError("");
     const success = await doRegister({ name: name.trim(), email: email.trim(), password, role: resolvedRole, subject, bio, grade });
     setLoading(false);
-    if (!success) setError("Registration failed. Please try again.");
+    if (success) {
+      router.replace("/");
+    } else {
+      setError("Registration failed. Please try again.");
+    }
   };
 
   return (

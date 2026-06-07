@@ -2,6 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +20,7 @@ const CREDENTIAL_TYPES = [
 
 export default function TeacherProfile() {
   const { user, logout, updateUser } = useAuth();
+  const handleLogout = async () => { await logout(); router.replace("/"); };
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const teacher = user as Teacher;
@@ -157,7 +159,7 @@ export default function TeacherProfile() {
         onPress={() => {
           Alert.alert("Log Out", "Are you sure you want to log out?", [
             { text: "Cancel", style: "cancel" },
-            { text: "Log Out", style: "destructive", onPress: logout },
+            { text: "Log Out", style: "destructive", onPress: handleLogout },
           ]);
         }}
         activeOpacity={0.7}

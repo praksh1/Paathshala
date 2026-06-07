@@ -23,8 +23,8 @@ export default function Landing() {
     );
   }
 
-  if (user?.role === "teacher") return <Redirect href="/(teacher)/" />;
-  if (user?.role === "student") return <Redirect href="/(student)/" />;
+  if (user?.role === "teacher") return <Redirect href="/(teacher)" />;
+  if (user?.role === "student") return <Redirect href="/(student)" />;
 
   return (
     <LinearGradient

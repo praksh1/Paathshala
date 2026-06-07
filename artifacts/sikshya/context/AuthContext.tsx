@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { apiGet, apiPost, getToken, setToken, clearToken, ApiError } from "../utils/api";
+import { apiGet, apiPost, apiPatch, getToken, setToken, clearToken, ApiError } from "../utils/api";
 
 export type TeacherApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -252,7 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user.role === "teacher") {
       try {
         const teacherUser = user as Teacher;
-        await apiPost<unknown>(`/teachers/${teacherUser.id}`, updates);
+        await apiPatch<unknown>(`/teachers/${teacherUser.id}`, updates);
       } catch (_e) {}
     }
     setUser({ ...user, ...updates } as User);

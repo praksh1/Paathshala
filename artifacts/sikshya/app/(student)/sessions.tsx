@@ -149,7 +149,7 @@ export default function StudentSessions() {
             </Text>
             <TouchableOpacity
               style={[styles.discoverBtn, { backgroundColor: colors.secondary }]}
-              onPress={() => router.push("/(student)/")}
+              onPress={() => router.push("/(student)")}
               activeOpacity={0.85}
             >
               <Text style={styles.discoverBtnText}>Find a Teacher</Text>

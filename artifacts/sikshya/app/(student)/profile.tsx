@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import React from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +15,7 @@ const PAYMENT_METHODS = [
 
 export default function StudentProfile() {
   const { user, logout } = useAuth();
+  const handleLogout = async () => { await logout(); router.replace("/"); };
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const student = user as Student;
@@ -121,7 +123,7 @@ export default function StudentProfile() {
         onPress={() => {
           Alert.alert("Log Out", "Are you sure?", [
             { text: "Cancel", style: "cancel" },
-            { text: "Log Out", style: "destructive", onPress: logout },
+            { text: "Log Out", style: "destructive", onPress: handleLogout },
           ]);
         }}
         activeOpacity={0.7}

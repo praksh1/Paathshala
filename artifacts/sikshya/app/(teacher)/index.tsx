@@ -17,6 +17,7 @@ const UPCOMING_SESSIONS = [
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth();
+  const handleLogout = async () => { await logout(); router.replace("/"); };
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { unreadCount, refresh: refreshNotifs } = useNotifications();
@@ -58,7 +59,7 @@ export default function TeacherDashboard() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconBtn, { borderColor: colors.border }]}
-            onPress={logout}
+            onPress={handleLogout}
             activeOpacity={0.7}
           >
             <Feather name="log-out" size={18} color={colors.mutedForeground} />

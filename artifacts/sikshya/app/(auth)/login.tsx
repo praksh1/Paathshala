@@ -43,7 +43,11 @@ export default function Login() {
     setError("");
     const success = await login(email.trim(), password, resolvedRole);
     setLoading(false);
-    if (!success) setError("Invalid credentials. Please try again.");
+    if (success) {
+      router.replace("/");
+    } else {
+      setError("Invalid credentials. Please try again.");
+    }
   };
 
   return (
