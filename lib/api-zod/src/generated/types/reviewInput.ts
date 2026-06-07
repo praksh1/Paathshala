@@ -5,6 +5,8 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface ReviewInput {
+  teacherId: number;
+  rating: number;
+  comment: string;
 }

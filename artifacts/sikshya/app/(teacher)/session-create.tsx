@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -16,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { SESSIONS_KEY } from "@/context/AuthContext";
+import { apiPost } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 import { useNotifications } from "@/context/NotificationContext";
 import { scheduleSessionReminder } from "@/utils/notifications";
@@ -50,24 +49,16 @@ export default function SessionCreate() {
     }
     setSaving(true);
     try {
-      const stored = await AsyncStorage.getItem(SESSIONS_KEY);
-      const sessions = stored ? JSON.parse(stored) : [];
-      const newSession = {
-        id: "session_" + Date.now(),
-        teacherId: teacher.id,
-        teacherName: teacher.name,
+      const sessionDate = new Date(`${date}T${time}:00`).toISOString();
+      const newSession = await apiPost<{ id: number; topic: string; date: string }>("/sessions", {
         subject,
         topic: topic.trim(),
-        description: description.trim(),
-        date: new Date(`${date}T${time}:00`).toISOString(),
+        date: sessionDate,
         duration,
         maxStudents,
-        enrolledStudents: [] as string[],
         price: parseInt(price) || 500,
-        status: "upcoming",
-      };
-      await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify([...sessions, newSession]));
-      await scheduleSessionReminder({ id: newSession.id, topic: newSession.topic, date: newSession.date });
+      });
+      await scheduleSessionReminder({ id: String(newSession.id), topic: newSession.topic, date: newSession.date });
       await refreshNotifs();
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.back();

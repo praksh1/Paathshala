@@ -1,36 +1,694 @@
-openapi: 3.1.0
+openapi: "3.1.0"
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: "1.0.0"
 servers:
   - url: /api
-    description: Base API path
-tags:
-  - name: health
-    description: Health operations
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
-      tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
-          description: Healthy
+          description: OK
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/register:
+    post:
+      operationId: register
+      summary: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Email exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /teachers:
+    get:
+      operationId: listTeachers
+      summary: List teachers
+      parameters:
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: subject
+          schema:
+            type: string
+        - in: query
+          name: district
+          schema:
+            type: string
+        - in: query
+          name: minRating
+          schema:
+            type: number
+        - in: query
+          name: maxPrice
+          schema:
+            type: integer
+        - in: query
+          name: onlineOnly
+          schema:
+            type: boolean
+        - in: query
+          name: sort
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherListResponse"
+
+  /teachers/{id}:
+    get:
+      operationId: getTeacher
+      summary: Get teacher by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherDetail"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateTeacher
+      summary: Update teacher profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeacherUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeacherDetail"
+
+  /teachers/{id}/reviews:
+    get:
+      operationId: listTeacherReviews
+      summary: List teacher reviews
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewListResponse"
+
+  /sessions:
+    get:
+      operationId: listSessions
+      summary: List sessions
+      parameters:
+        - in: query
+          name: teacherId
+          schema:
+            type: integer
+        - in: query
+          name: studentId
+          schema:
+            type: integer
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionListResponse"
+    post:
+      operationId: createSession
+      summary: Create session
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      summary: Get session
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateSession
+      summary: Update session
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+
+  /sessions/{id}/enroll:
+    post:
+      operationId: enrollSession
+      summary: Enroll in session
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollInput"
+      responses:
+        "201":
+          description: Enrolled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enrollment"
+        "409":
+          description: Already enrolled or full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /reviews:
+    post:
+      operationId: createReview
+      summary: Create review
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReviewInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Review"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    RegisterInput:
+      type: object
+      required: [name, email, password, role]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+        subject:
+          type: string
+        grade:
+          type: string
+        bio:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [token, user]
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+
+    UserProfile:
+      type: object
+      required: [id, email, name, role]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        teacher:
+          $ref: "#/components/schemas/TeacherDetail"
+        student:
+          $ref: "#/components/schemas/StudentProfile"
+
+    StudentProfile:
+      type: object
+      required: [id, userId, grade]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        grade:
+          type: string
+        bio:
+          type: ["string", "null"]
+        avatarUrl:
+          type: ["string", "null"]
+
+    TeacherDetail:
+      type: object
+      required: [id, userId, name, email, subject, subjects, bio, approvalStatus, rating, reviewCount, totalStudents, isOnline, subscriptionActive, sessionsThisMonth, languages, monthlyEarnings]
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        subject:
+          type: string
+        subjects:
+          type: array
+          items:
+            type: string
+        bio:
+          type: string
+        approvalStatus:
+          type: string
+        location:
+          type: ["string", "null"]
+        district:
+          type: ["string", "null"]
+        experienceYears:
+          type: ["integer", "null"]
+        pricePerSession:
+          type: ["integer", "null"]
+        languages:
+          type: array
+          items:
+            type: string
+        isOnline:
+          type: boolean
+        subscriptionActive:
+          type: boolean
+        sessionsThisMonth:
+          type: integer
+        totalStudents:
+          type: integer
+        monthlyEarnings:
+          type: integer
+        rating:
+          type: number
+        reviewCount:
+          type: integer
+        avatarUrl:
+          type: ["string", "null"]
+
+    TeacherUpdate:
+      type: object
+      properties:
+        bio:
+          type: string
+        subject:
+          type: string
+        subjects:
+          type: array
+          items:
+            type: string
+        location:
+          type: string
+        district:
+          type: string
+        experienceYears:
+          type: integer
+        pricePerSession:
+          type: integer
+        languages:
+          type: array
+          items:
+            type: string
+        isOnline:
+          type: boolean
+
+    TeacherListResponse:
+      type: object
+      required: [teachers, total, page, limit]
+      properties:
+        teachers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TeacherDetail"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Session:
+      type: object
+      required: [id, teacherId, teacherName, subject, topic, date, duration, maxStudents, enrolledCount, price, status, createdAt]
+      properties:
+        id:
+          type: integer
+        teacherId:
+          type: integer
+        teacherName:
+          type: string
+        subject:
+          type: string
+        topic:
+          type: string
+        date:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+        maxStudents:
+          type: integer
+        enrolledCount:
+          type: integer
+        price:
+          type: integer
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    SessionInput:
+      type: object
+      required: [subject, topic, date, duration, maxStudents, price]
+      properties:
+        subject:
+          type: string
+        topic:
+          type: string
+        date:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+        maxStudents:
+          type: integer
+        price:
+          type: integer
+
+    SessionUpdate:
       type: object
       properties:
         status:
           type: string
-      required:
-        - status
+        topic:
+          type: string
+
+    SessionListResponse:
+      type: object
+      required: [sessions, total, page, limit]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Session"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    Enrollment:
+      type: object
+      required: [id, sessionId, studentId, paymentStatus, enrolledAt]
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        studentId:
+          type: integer
+        paymentStatus:
+          type: string
+        paymentMethod:
+          type: ["string", "null"]
+        enrolledAt:
+          type: string
+          format: date-time
+
+    EnrollInput:
+      type: object
+      required: [paymentMethod]
+      properties:
+        paymentMethod:
+          type: string
+
+    Review:
+      type: object
+      required: [id, teacherId, studentId, studentName, rating, comment, createdAt]
+      properties:
+        id:
+          type: integer
+        teacherId:
+          type: integer
+        studentId:
+          type: integer
+        studentName:
+          type: string
+        rating:
+          type: number
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    ReviewInput:
+      type: object
+      required: [teacherId, rating, comment]
+      properties:
+        teacherId:
+          type: integer
+        rating:
+          type: number
+        comment:
+          type: string
+
+    ReviewListResponse:
+      type: object
+      required: [reviews, total, page, limit]
+      properties:
+        reviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/Review"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
 

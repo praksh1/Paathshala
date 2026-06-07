@@ -5,6 +5,7 @@
  * OpenAPI spec version: 1.0.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type ListTeacherReviewsParams = {
+page?: number;
+limit?: number;
+};

@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
@@ -7,7 +6,6 @@ import React, { useState } from "react";
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { TEACHERS_KEY } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import StarRating from "@/components/StarRating";
 import type { Teacher, Credential } from "@/context/AuthContext";
@@ -58,14 +56,6 @@ export default function TeacherProfile() {
       };
       const updated = [...(teacher.credentials ?? []), newCred];
       await updateUser({ credentials: updated, approvalStatus: "pending" } as Partial<Teacher>);
-
-      const teachersStr = await AsyncStorage.getItem(TEACHERS_KEY);
-      const teachers: Teacher[] = teachersStr ? JSON.parse(teachersStr) : [];
-      const idx = teachers.findIndex((t) => t.id === teacher.id);
-      if (idx >= 0) {
-        teachers[idx] = { ...teachers[idx], credentials: updated };
-        await AsyncStorage.setItem(TEACHERS_KEY, JSON.stringify(teachers));
-      }
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Uploaded", `${type} uploaded successfully. It will be reviewed within 24-48 hours.`);
     } catch (_e) {

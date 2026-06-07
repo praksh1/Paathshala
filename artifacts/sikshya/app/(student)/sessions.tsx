@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -6,7 +5,7 @@ import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "@/context/AuthContext";
-import { SESSIONS_KEY } from "@/context/AuthContext";
+import { apiGet } from "@/utils/api";
 import SessionCard from "@/components/SessionCard";
 import { useColors } from "@/hooks/useColors";
 import type { Student } from "@/context/AuthContext";
@@ -39,12 +38,38 @@ export default function StudentSessions() {
   );
 
   const loadSessions = async () => {
-    const stored = await AsyncStorage.getItem(SESSIONS_KEY);
-    const all: Session[] = stored ? JSON.parse(stored) : [];
-    const mySessions = all.filter(
-      (s) => s.enrolledStudents.includes(student?.id ?? "") || s.status === "live"
-    );
-    setSessions(mySessions);
+    try {
+      const [myRes, liveRes] = await Promise.all([
+        student?.userId
+          ? apiGet<{ sessions: { id: number; teacherName: string; subject: string; topic: string; date: string; duration: number; maxStudents: number; enrolledCount: number; price: number; status: string }[] }>(
+              `/sessions?studentId=${student.userId}&limit=50`
+            )
+          : Promise.resolve({ sessions: [] }),
+        apiGet<{ sessions: { id: number; teacherName: string; subject: string; topic: string; date: string; duration: number; maxStudents: number; enrolledCount: number; price: number; status: string }[] }>(
+          "/sessions?status=live&limit=10"
+        ),
+      ]);
+
+      const mapSession = (s: { id: number; teacherName: string; subject: string; topic: string; date: string; duration: number; maxStudents: number; enrolledCount: number; price: number; status: string }): Session => ({
+        id: String(s.id),
+        teacherId: "",
+        teacherName: s.teacherName,
+        subject: s.subject,
+        topic: s.topic,
+        date: s.date,
+        duration: s.duration,
+        maxStudents: s.maxStudents,
+        enrolledStudents: Array(s.enrolledCount).fill(""),
+        price: s.price,
+        status: s.status as Session["status"],
+      });
+
+      const allSessions = [
+        ...myRes.sessions.map(mapSession),
+        ...liveRes.sessions.filter((ls) => !myRes.sessions.some((ms) => ms.id === ls.id)).map(mapSession),
+      ];
+      setSessions(allSessions);
+    } catch (_e) {}
   };
 
   const joinSession = (session: Session) => {

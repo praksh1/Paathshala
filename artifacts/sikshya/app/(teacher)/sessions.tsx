@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
@@ -6,7 +5,7 @@ import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "@/context/AuthContext";
-import { SESSIONS_KEY } from "@/context/AuthContext";
+import { apiGet } from "@/utils/api";
 import SessionCard from "@/components/SessionCard";
 import { useColors } from "@/hooks/useColors";
 import type { Teacher } from "@/context/AuthContext";
@@ -42,9 +41,25 @@ export default function TeacherSessions() {
   );
 
   const loadSessions = async () => {
-    const stored = await AsyncStorage.getItem(SESSIONS_KEY);
-    const all: Session[] = stored ? JSON.parse(stored) : [];
-    setSessions(all.filter((s) => s.teacherId === teacher?.id || teacher?.id?.startsWith("teacher_1")));
+    if (!teacher?.userId) return;
+    try {
+      const res = await apiGet<{ sessions: { id: number; teacherName: string; subject: string; topic: string; date: string; duration: number; maxStudents: number; enrolledCount: number; price: number; status: string }[] }>(
+        `/sessions?teacherId=${teacher.userId}&limit=100`
+      );
+      setSessions(res.sessions.map((s) => ({
+        id: String(s.id),
+        teacherId: String(teacher.userId),
+        teacherName: s.teacherName,
+        subject: s.subject,
+        topic: s.topic,
+        date: s.date,
+        duration: s.duration,
+        maxStudents: s.maxStudents,
+        enrolledStudents: Array(s.enrolledCount).fill(""),
+        price: s.price,
+        status: s.status as Session["status"],
+      })));
+    } catch (_e) {}
   };
 
   const TABS: { key: FilterTab; label: string }[] = [

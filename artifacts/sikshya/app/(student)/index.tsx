@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
@@ -18,7 +17,7 @@ import { useFocusEffect } from "@react-navigation/native";
 
 import { useColors } from "@/hooks/useColors";
 import { useNotifications } from "@/context/NotificationContext";
-import { TEACHERS_KEY, SAMPLE_TEACHERS } from "@/context/AuthContext";
+import { apiGet } from "@/utils/api";
 import TeacherCard from "@/components/TeacherCard";
 import type { Teacher } from "@/context/AuthContext";
 
@@ -70,9 +69,12 @@ export default function Discover() {
   );
 
   const loadTeachers = async () => {
-    const stored = await AsyncStorage.getItem(TEACHERS_KEY);
-    const all: Teacher[] = stored ? JSON.parse(stored) : SAMPLE_TEACHERS;
-    setTeachers(all.filter((t) => t.approvalStatus === "approved"));
+    try {
+      const res = await apiGet<{ teachers: Teacher[]; total: number }>("/teachers?limit=200");
+      setTeachers(res.teachers.map((t: Teacher) => ({ ...t, credentials: [] })));
+    } catch (_e) {
+      setTeachers([]);
+    }
   };
 
   const activeFilterCount = useMemo(() => {

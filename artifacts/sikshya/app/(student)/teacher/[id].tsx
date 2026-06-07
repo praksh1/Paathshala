@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
@@ -8,7 +7,7 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "rea
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
-import { TEACHERS_KEY, SESSIONS_KEY, SAMPLE_TEACHERS } from "@/context/AuthContext";
+import { apiGet, apiPost } from "@/utils/api";
 import StarRating from "@/components/StarRating";
 import SessionCard from "@/components/SessionCard";
 import type { Teacher } from "@/context/AuthContext";
@@ -27,11 +26,13 @@ interface Session {
   status: "upcoming" | "live" | "completed" | "cancelled";
 }
 
-const SAMPLE_REVIEWS = [
-  { id: "r1", studentName: "Aarav S.", rating: 5, comment: "Excellent explanations! Very patient.", date: "May 2025" },
-  { id: "r2", studentName: "Sita G.", rating: 5, comment: "Best teacher I've had online.", date: "Apr 2025" },
-  { id: "r3", studentName: "Ramesh K.", rating: 4, comment: "Good sessions, very knowledgeable.", date: "Apr 2025" },
-];
+interface ApiReview {
+  id: number;
+  studentName: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
 
 export default function TeacherDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,6 +41,7 @@ export default function TeacherDetail() {
   const { user } = useAuth();
   const [teacher, setTeacher] = useState<Teacher | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [reviews, setReviews] = useState<ApiReview[]>([]);
   const [myRating, setMyRating] = useState(0);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
 
@@ -48,14 +50,33 @@ export default function TeacherDetail() {
   }, [id]);
 
   const loadData = async () => {
-    const stored = await AsyncStorage.getItem(TEACHERS_KEY);
-    const all: Teacher[] = stored ? JSON.parse(stored) : SAMPLE_TEACHERS;
-    const found = all.find((t) => t.id === id);
-    setTeacher(found ?? null);
+    try {
+      const apiTeacher = await apiGet<Teacher & { userId: number }>(`/teachers/${id}`);
+      setTeacher({ ...apiTeacher, id: String(apiTeacher.id), credentials: [] });
 
-    const sessionsStored = await AsyncStorage.getItem(SESSIONS_KEY);
-    const allSessions: Session[] = sessionsStored ? JSON.parse(sessionsStored) : [];
-    setSessions(allSessions.filter((s) => s.teacherId === id && s.status === "upcoming"));
+      const [sessRes, revRes] = await Promise.all([
+        apiGet<{ sessions: { id: number; teacherName: string; subject: string; topic: string; date: string; duration: number; maxStudents: number; enrolledCount: number; price: number; status: string }[] }>(
+          `/sessions?teacherId=${apiTeacher.userId}&status=upcoming`
+        ),
+        apiGet<{ reviews: ApiReview[] }>(`/teachers/${id}/reviews?limit=10`),
+      ]);
+
+      setSessions(sessRes.sessions.map((s) => ({
+        id: String(s.id),
+        teacherId: String(apiTeacher.id),
+        teacherName: s.teacherName,
+        subject: s.subject,
+        topic: s.topic,
+        date: s.date,
+        duration: s.duration,
+        maxStudents: s.maxStudents,
+        enrolledStudents: Array(s.enrolledCount).fill(""),
+        price: s.price,
+        status: s.status as Session["status"],
+      })));
+
+      setReviews(revRes.reviews);
+    } catch (_e) {}
   };
 
   const bookSession = (session: Session) => {
@@ -76,10 +97,17 @@ export default function TeacherDetail() {
   };
 
   const submitRating = async () => {
-    if (myRating === 0) return;
+    if (myRating === 0 || !teacher) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      await apiPost("/reviews", {
+        teacherId: (teacher as Teacher & { userId: number }).userId,
+        rating: myRating,
+        comment: `Great teacher! Rated ${myRating} star${myRating !== 1 ? "s" : ""}.`,
+      });
+    } catch (_e) {}
     setRatingSubmitted(true);
-    Alert.alert("Thank you!", `You rated ${teacher?.name} ${myRating} star${myRating !== 1 ? "s" : ""}.`);
+    Alert.alert("Thank you!", `You rated ${teacher.name} ${myRating} star${myRating !== 1 ? "s" : ""}.`);
   };
 
   if (!teacher) return null;
@@ -184,7 +212,7 @@ export default function TeacherDetail() {
         )}
 
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Student Reviews</Text>
-        {SAMPLE_REVIEWS.map((review) => (
+        {reviews.map((review) => (
           <View key={review.id} style={[styles.reviewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.reviewHeader}>
               <View style={[styles.reviewAvatar, { backgroundColor: colors.primary + "15" }]}>
@@ -192,13 +220,21 @@ export default function TeacherDetail() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.reviewName, { color: colors.foreground }]}>{review.studentName}</Text>
-                <Text style={[styles.reviewDate, { color: colors.mutedForeground }]}>{review.date}</Text>
+                <Text style={[styles.reviewDate, { color: colors.mutedForeground }]}>
+                  {new Date(review.createdAt).toLocaleDateString("en-NP", { month: "short", year: "numeric" })}
+                </Text>
               </View>
               <StarRating rating={review.rating} size={14} />
             </View>
             <Text style={[styles.reviewComment, { color: colors.mutedForeground }]}>"{review.comment}"</Text>
           </View>
         ))}
+        {reviews.length === 0 && (
+          <View style={[styles.noSessions, { backgroundColor: colors.muted }]}>
+            <Feather name="message-circle" size={20} color={colors.mutedForeground} />
+            <Text style={[styles.noSessionsText, { color: colors.mutedForeground }]}>No reviews yet. Be the first to rate!</Text>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
