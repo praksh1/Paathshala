@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
+import { ApiError } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 
 export default function Login() {
@@ -41,12 +42,13 @@ export default function Login() {
     }
     setLoading(true);
     setError("");
-    const success = await login(email.trim(), password, resolvedRole);
-    setLoading(false);
-    if (success) {
-      router.replace("/");
-    } else {
-      setError("Invalid credentials. Please try again.");
+    try {
+      const success = await login(email.trim(), password, resolvedRole);
+      setLoading(false);
+      if (success) router.replace("/");
+    } catch (e) {
+      setLoading(false);
+      setError(e instanceof ApiError ? e.message : "Login failed. Please try again.");
     }
   };
 

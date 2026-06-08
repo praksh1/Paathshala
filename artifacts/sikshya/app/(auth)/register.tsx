@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "@/context/AuthContext";
+import { ApiError } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 
 const SUBJECTS = [
@@ -59,12 +60,13 @@ export default function Register() {
     }
     setLoading(true);
     setError("");
-    const success = await doRegister({ name: name.trim(), email: email.trim(), password, role: resolvedRole, subject, bio, grade });
-    setLoading(false);
-    if (success) {
-      router.replace("/");
-    } else {
-      setError("Registration failed. Please try again.");
+    try {
+      const success = await doRegister({ name: name.trim(), email: email.trim(), password, role: resolvedRole, subject, bio, grade });
+      setLoading(false);
+      if (success) router.replace("/");
+    } catch (e) {
+      setLoading(false);
+      setError(e instanceof ApiError ? e.message : "Registration failed. Please try again.");
     }
   };
 

@@ -203,43 +203,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async (email: string, password: string, _role: "teacher" | "student"): Promise<boolean> => {
-    try {
-      const res = await apiPost<ApiAuthResponse>("/auth/login", { email, password });
-      await setToken(res.token);
-      const mapped = mapApiUserToUser(res.user);
-      if (!mapped) return false;
-      setUser(mapped);
-      return true;
-    } catch (e) {
-      if (e instanceof ApiError) {
-        console.warn("Login failed:", e.message);
-      }
-      return false;
-    }
+    const res = await apiPost<ApiAuthResponse>("/auth/login", { email, password });
+    await setToken(res.token);
+    const mapped = mapApiUserToUser(res.user);
+    if (!mapped) return false;
+    setUser(mapped);
+    return true;
   };
 
   const register = async (data: RegisterData): Promise<boolean> => {
-    try {
-      const res = await apiPost<ApiAuthResponse>("/auth/register", {
-        name: data.name,
-        email: data.email,
-        password: data.password,
-        role: data.role,
-        subject: data.subject,
-        bio: data.bio,
-        grade: data.grade,
-      });
-      await setToken(res.token);
-      const mapped = mapApiUserToUser(res.user);
-      if (!mapped) return false;
-      setUser(mapped);
-      return true;
-    } catch (e) {
-      if (e instanceof ApiError) {
-        console.warn("Register failed:", e.message);
-      }
-      return false;
-    }
+    const res = await apiPost<ApiAuthResponse>("/auth/register", {
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      role: data.role,
+      subject: data.subject,
+      bio: data.bio,
+      grade: data.grade,
+    });
+    await setToken(res.token);
+    const mapped = mapApiUserToUser(res.user);
+    if (!mapped) return false;
+    setUser(mapped);
+    return true;
   };
 
   const logout = async () => {
