@@ -74,8 +74,8 @@ function ClassicTabLayout() {
           tabBarIcon: ({ color }) => <Feather name="user" size={22} color={color} />,
         }}
       />
-      <Tabs.Screen name="session-create" options={{ href: null }} />
-      <Tabs.Screen name="classroom/[id]" options={{ href: null }} />
+      <Tabs.Screen name="session-create" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="classroom/[id]" options={{ href: null, tabBarStyle: { display: "none" } }} />
     </Tabs>
   );
 }

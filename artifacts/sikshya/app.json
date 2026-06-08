@@ -3,7 +3,7 @@
     "name": "Guru",
     "slug": "guru",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "guru",
     "userInterfaceStyle": "light",
@@ -15,14 +15,24 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.guru.app"
+      "bundleIdentifier": "com.guru.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Sikshya needs microphone access for live classroom audio.",
+        "NSCameraUsageDescription": "Sikshya needs camera access for live classroom video.",
+        "NSCameraUsageDescription_camera": "Allow camera for live video in classrooms."
+      }
     },
     "android": {
       "package": "com.guru.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#1A365D"
-      }
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/images/icon.png"
@@ -36,6 +46,7 @@
       ],
       "expo-font",
       "expo-web-browser",
+      "expo-screen-orientation",
       [
         "expo-image-picker",
         {

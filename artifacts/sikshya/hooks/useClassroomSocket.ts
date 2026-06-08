@@ -1,0 +1,197 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Animated, Platform } from "react-native";
+import { getToken } from "@/utils/api";
+
+export interface ChatMessage {
+  id: string;
+  senderName: string;
+  role: "teacher" | "student";
+  text: string;
+  time: string;
+  isMe: boolean;
+}
+
+export interface DrawPath {
+  d: string;
+  color: string;
+  width: number;
+}
+
+export interface FloatingReaction {
+  id: string;
+  emoji: string;
+  senderName: string;
+  opacity: Animated.Value;
+  translateY: Animated.Value;
+  x: number;
+}
+
+function getWsUrl(sessionId: string, token: string, name: string): string {
+  const params = new URLSearchParams({ sessionId, token, name });
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (domain) return `wss://${domain}/api/ws?${params.toString()}`;
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}/api/ws?${params.toString()}`;
+  }
+  return `ws://localhost:80/api/ws?${params.toString()}`;
+}
+
+interface Options {
+  sessionId: string;
+  name: string;
+  role: "teacher" | "student";
+}
+
+interface Result {
+  connected: boolean;
+  presenceCount: number;
+  messages: ChatMessage[];
+  remotePaths: DrawPath[];
+  floatingReactions: FloatingReaction[];
+  sendChat: (text: string) => void;
+  sendReaction: (emoji: string) => void;
+  sendDrawCommit: (d: string, color: string, width: number) => void;
+  sendBoardClear: () => void;
+}
+
+export function useClassroomSocket({ sessionId, name, role }: Options): Result {
+  const [connected, setConnected] = useState(false);
+  const [presenceCount, setPresenceCount] = useState(0);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [remotePaths, setRemotePaths] = useState<DrawPath[]>([]);
+  const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const nameRef = useRef(name);
+  const roleRef = useRef(role);
+  nameRef.current = name;
+  roleRef.current = role;
+
+  const addFloating = useCallback((emoji: string, senderName: string) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    const opacity = new Animated.Value(1);
+    const translateY = new Animated.Value(0);
+    const x = 0.05 + Math.random() * 0.65;
+    const reaction: FloatingReaction = { id, emoji, senderName, opacity, translateY, x };
+    setFloatingReactions((prev) => [...prev, reaction]);
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 0, duration: 2500, useNativeDriver: true }),
+      Animated.timing(translateY, { toValue: -130, duration: 2500, useNativeDriver: true }),
+    ]).start(() => {
+      setFloatingReactions((prev) => prev.filter((r) => r.id !== id));
+    });
+  }, []);
+
+  const send = useCallback((data: object) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
+  }, []);
+
+  const connect = useCallback(async () => {
+    if (!mountedRef.current) return;
+    const token = await getToken();
+    if (!token) return;
+
+    const url = getWsUrl(sessionId, token, nameRef.current);
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (!mountedRef.current) { ws.close(); return; }
+      setConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      if (!mountedRef.current) return;
+      let msg: Record<string, unknown>;
+      try { msg = JSON.parse(event.data as string) as Record<string, unknown>; } catch { return; }
+
+      switch (msg.type) {
+        case "chat":
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              senderName: msg.senderName as string,
+              role: msg.role as "teacher" | "student",
+              text: msg.text as string,
+              time: msg.time as string,
+              isMe: false,
+            },
+          ]);
+          break;
+        case "draw_commit":
+          setRemotePaths((prev) => [
+            ...prev,
+            { d: msg.d as string, color: msg.color as string, width: msg.width as number },
+          ]);
+          break;
+        case "board_clear":
+          setRemotePaths([]);
+          break;
+        case "presence":
+          setPresenceCount(msg.count as number);
+          break;
+        case "reaction":
+          addFloating(msg.emoji as string, msg.senderName as string);
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      if (!mountedRef.current) return;
+      setConnected(false);
+      reconnTimerRef.current = setTimeout(() => { void connect(); }, 3000);
+    };
+
+    ws.onerror = () => { ws.close(); };
+  }, [sessionId, addFloating]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    void connect();
+    return () => {
+      mountedRef.current = false;
+      if (reconnTimerRef.current) clearTimeout(reconnTimerRef.current);
+      wsRef.current?.close();
+    };
+  }, [connect]);
+
+  const sendChat = useCallback(
+    (text: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}`,
+          senderName: nameRef.current,
+          role: roleRef.current,
+          text,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isMe: true,
+        },
+      ]);
+      send({ type: "chat", text });
+    },
+    [send],
+  );
+
+  const sendReaction = useCallback(
+    (emoji: string) => {
+      addFloating(emoji, nameRef.current);
+      send({ type: "reaction", emoji });
+    },
+    [addFloating, send],
+  );
+
+  const sendDrawCommit = useCallback(
+    (d: string, color: string, width: number) => send({ type: "draw_commit", d, color, width }),
+    [send],
+  );
+
+  const sendBoardClear = useCallback(() => send({ type: "board_clear" }), [send]);
+
+  return { connected, presenceCount, messages, remotePaths, floatingReactions, sendChat, sendReaction, sendDrawCommit, sendBoardClear };
+}
