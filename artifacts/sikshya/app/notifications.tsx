@@ -74,7 +74,7 @@ export default function NotificationsScreen() {
       else if (role === "student") router.replace("/(student)/sessions");
       else router.replace(home);
     } else if (item.type === "payment" && role === "teacher") {
-      router.replace("/(teacher)/subscription");
+      router.push({ pathname: "/(teacher)/subscription", params: { from: "notif" } });
     } else {
       router.replace(home);
     }

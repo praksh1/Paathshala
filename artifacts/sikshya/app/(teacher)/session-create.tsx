@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { apiPost } from "@/utils/api";
+import { apiPost, apiPatch } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 import { useNotifications } from "@/context/NotificationContext";
 import { scheduleSessionReminder } from "@/utils/notifications";
@@ -81,6 +81,44 @@ export default function SessionCreate() {
     } catch (_e) {
       if (Platform.OS === "web") window.alert("Error\n\nFailed to create session. Please check your inputs and try again.");
       else Alert.alert("Error", "Failed to create session. Please check your inputs and try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGoLive = async () => {
+    if (!topic.trim()) {
+      if (Platform.OS === "web") window.alert("Missing Info\n\nPlease enter a session topic to go live.");
+      else Alert.alert("Missing Info", "Please enter a session topic to go live.");
+      return;
+    }
+    setSaving(true);
+    let createdId: number | null = null;
+    try {
+      const newSession = await apiPost<{ id: number; topic: string; date: string }>("/sessions", {
+        subject,
+        topic: topic.trim(),
+        description: description.trim(),
+        date: new Date().toISOString(),
+        duration,
+        maxStudents,
+        price: parseInt(price) || 500,
+      });
+      createdId = newSession.id;
+      await apiPatch(`/sessions/${newSession.id}`, { status: "live" });
+      try { await refreshNotifs(); } catch {}
+      try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+      router.replace(`/(teacher)/classroom/${newSession.id}`);
+    } catch (_e) {
+      if (createdId != null) {
+        const msg = "Your session was created but couldn't go live. You can start it from your Sessions tab.";
+        if (Platform.OS === "web") window.alert(`Session Created\n\n${msg}`);
+        else Alert.alert("Session Created", msg);
+        router.replace("/(teacher)/sessions");
+      } else {
+        if (Platform.OS === "web") window.alert("Error\n\nFailed to start the live session. Please try again.");
+        else Alert.alert("Error", "Failed to start the live session. Please try again.");
+      }
     } finally {
       setSaving(false);
     }
@@ -226,13 +264,23 @@ export default function SessionCreate() {
         </View>
 
         <TouchableOpacity
+          style={[styles.goLiveBtn, { backgroundColor: colors.success }, saving && { opacity: 0.7 }]}
+          onPress={handleGoLive}
+          disabled={saving}
+          activeOpacity={0.85}
+        >
+          <Feather name="radio" size={20} color="#fff" />
+          <Text style={styles.createBtnText}>Create & Go Live Now</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.createBtn, { backgroundColor: colors.primary }, saving && { opacity: 0.7 }]}
           onPress={handleCreate}
           disabled={saving}
           activeOpacity={0.85}
         >
-          <Feather name="check" size={20} color="#fff" />
-          <Text style={styles.createBtnText}>{saving ? "Creating..." : "Create Session"}</Text>
+          <Feather name="calendar" size={20} color="#fff" />
+          <Text style={styles.createBtnText}>{saving ? "Saving..." : "Schedule for Later"}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -268,6 +316,7 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 14, fontFamily: "Inter_500Medium" },
   summaryBox: { flexDirection: "row", alignItems: "flex-start", gap: 10, borderRadius: 14, borderWidth: 1, padding: 14 },
   summaryText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular", lineHeight: 19 },
+  goLiveBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, paddingVertical: 17 },
   createBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 16, paddingVertical: 17 },
   createBtnText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#fff" },
 });

@@ -3,13 +3,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 import { apiGet, apiPost } from "@/utils/api";
 import StarRating from "@/components/StarRating";
 import SessionCard from "@/components/SessionCard";
+import PaymentSheet, { type PaymentMethod } from "@/components/PaymentSheet";
 import type { Teacher } from "@/context/AuthContext";
 
 interface Session {
@@ -45,6 +46,7 @@ export default function TeacherDetail() {
   const [myRating, setMyRating] = useState(0);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
+  const [paySession, setPaySession] = useState<Session | null>(null);
 
   useEffect(() => {
     loadData();
@@ -81,28 +83,12 @@ export default function TeacherDetail() {
   };
 
   const bookSession = (session: Session) => {
-    if (Platform.OS === "web") {
-      const ok = window.confirm(
-        `Book Session\n\n"${session.topic}"\nNPR ${session.price.toLocaleString()}\n\nClick OK to pay via eSewa, or Cancel then choose Khalti.`
-      );
-      if (ok) confirmBooking(session, "esewa");
-      else if (window.confirm(`Pay via Khalti instead?\n\nNPR ${session.price.toLocaleString()}`)) {
-        confirmBooking(session, "khalti");
-      }
-    } else {
-      Alert.alert(
-        "Book Session",
-        `"${session.topic}"\nNPR ${session.price.toLocaleString()}\n\nChoose your payment method:`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Pay via eSewa", onPress: () => confirmBooking(session, "esewa") },
-          { text: "Pay via Khalti", onPress: () => confirmBooking(session, "khalti") },
-        ]
-      );
-    }
+    if (bookingSessionId) return;
+    setPaySession(session);
   };
 
-  const confirmBooking = async (session: Session, paymentMethod: "esewa" | "khalti") => {
+  const confirmBooking = async (session: Session, paymentMethod: PaymentMethod) => {
+    setPaySession(null);
     if (bookingSessionId === session.id) return;
     setBookingSessionId(session.id);
     try {
@@ -281,6 +267,16 @@ export default function TeacherDetail() {
           </View>
         )}
       </View>
+
+      <PaymentSheet
+        visible={paySession !== null}
+        amount={paySession?.price ?? 0}
+        label={paySession ? `Book · ${paySession.topic}` : "Book Session"}
+        onClose={() => setPaySession(null)}
+        onSuccess={(method) => {
+          if (paySession) confirmBooking(paySession, method);
+        }}
+      />
     </ScrollView>
   );
 }

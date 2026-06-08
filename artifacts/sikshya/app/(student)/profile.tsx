@@ -36,7 +36,7 @@ export default function StudentProfile() {
     ]);
   };
 
-  if (!student) return null;
+  if (!student || student.role !== "student") return null;
 
   const initials = student.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
 

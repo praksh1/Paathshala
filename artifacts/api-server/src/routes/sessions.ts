@@ -83,14 +83,28 @@ router.get("/sessions/:id", async (req, res): Promise<void> => {
   res.json(session);
 });
 
+const ALLOWED_STATUSES = ["upcoming", "live", "completed", "cancelled"];
+
 router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid session ID" }); return; }
 
+  const user = req.user!;
+  if (user.role !== "teacher") {
+    res.status(403).json({ error: "Only teachers can update sessions" });
+    return;
+  }
+
   const { status, topic } = req.body as { status?: string; topic?: string };
   const updates: Record<string, unknown> = {};
-  if (status !== undefined) updates.status = status;
+  if (status !== undefined) {
+    if (!ALLOWED_STATUSES.includes(status)) {
+      res.status(400).json({ error: "Invalid status" });
+      return;
+    }
+    updates.status = status;
+  }
   if (topic !== undefined) updates.topic = topic;
 
   if (Object.keys(updates).length === 0) {
@@ -98,8 +112,14 @@ router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
     return;
   }
 
+  const [existing] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Session not found" }); return; }
+  if (existing.teacherId !== user.userId) {
+    res.status(403).json({ error: "You can only update your own sessions" });
+    return;
+  }
+
   const [session] = await db.update(sessionsTable).set(updates).where(eq(sessionsTable.id, id)).returning();
-  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
   res.json(session);
 });
 

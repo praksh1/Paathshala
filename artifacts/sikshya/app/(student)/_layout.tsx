@@ -1,30 +1,9 @@
 import { BlurView } from "expo-blur";
-import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
-
-function NativeStudentTabLayout() {
-  return (
-    <NativeTabs>
-      <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: "magnifyingglass", selected: "magnifyingglass.circle.fill" }} />
-        <Label>Discover</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="sessions">
-        <Icon sf={{ default: "calendar", selected: "calendar.badge.clock" }} />
-        <Label>Sessions</Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="profile">
-        <Icon sf={{ default: "person.crop.circle", selected: "person.crop.circle.fill" }} />
-        <Label>Profile</Label>
-      </NativeTabs.Trigger>
-    </NativeTabs>
-  );
-}
 
 function ClassicStudentTabLayout() {
   const colors = useColors();
@@ -83,6 +62,5 @@ function ClassicStudentTabLayout() {
 }
 
 export default function StudentTabLayout() {
-  if (isLiquidGlassAvailable()) return <NativeStudentTabLayout />;
   return <ClassicStudentTabLayout />;
 }

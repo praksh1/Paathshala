@@ -42,7 +42,7 @@ export default function TeacherProfile() {
     ]);
   };
 
-  if (!teacher) return null;
+  if (!teacher || teacher.role !== "teacher") return null;
 
   const statusColor = teacher.approvalStatus === "approved" ? colors.success :
     teacher.approvalStatus === "rejected" ? colors.destructive : colors.accent;
@@ -113,7 +113,7 @@ export default function TeacherProfile() {
           {teacher.bio || "No bio added yet. Update your profile to let students know about your experience."}
         </Text>
         <View style={styles.tagRow}>
-          {teacher.subjects.map((s) => (
+          {(teacher.subjects ?? []).map((s) => (
             <View key={s} style={[styles.tag, { backgroundColor: colors.primary + "12" }]}>
               <Text style={[styles.tagText, { color: colors.primary }]}>{s}</Text>
             </View>

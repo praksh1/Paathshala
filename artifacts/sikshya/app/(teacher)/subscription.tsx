@@ -1,13 +1,15 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
 import { useNotifications } from "@/context/NotificationContext";
 import { addInAppNotification } from "@/utils/notifications";
+import PaymentSheet, { type PaymentMethod } from "@/components/PaymentSheet";
 import type { Teacher } from "@/context/AuthContext";
 
 const PAYMENT_HISTORY = [
@@ -22,33 +24,34 @@ export default function Subscription() {
   const insets = useSafeAreaInsets();
   const teacher = user as Teacher;
   const [selectedMethod, setSelectedMethod] = useState<"esewa" | "khalti">("esewa");
+  const [payVisible, setPayVisible] = useState(false);
   const { refresh: refreshNotifs } = useNotifications();
+  const { from } = useLocalSearchParams<{ from?: string }>();
 
   const sessionsUsed = teacher?.sessionsThisMonth ?? 0;
   const sessionsRemaining = 10 - sessionsUsed;
   const progressPct = sessionsUsed / 10;
 
+  const handleBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/notifications");
+  };
+
   const handlePay = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert(
-      "Redirecting to " + (selectedMethod === "esewa" ? "eSewa" : "Khalti"),
-      `You will be redirected to ${selectedMethod === "esewa" ? "eSewa" : "Khalti"} to complete your NPR 2,000 payment for the monthly subscription.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Proceed",
-          onPress: async () => {
-            await addInAppNotification({
-              title: "Subscription Payment Confirmed",
-              body: `NPR 2,000 paid via ${selectedMethod === "esewa" ? "eSewa" : "Khalti"}. Your Sikshya Pro plan is active for July 2025.`,
-              type: "payment",
-            });
-            await refreshNotifs();
-            Alert.alert("Payment Successful!", "Your Sikshya Pro subscription is now active. Happy teaching!");
-          },
-        },
-      ]
-    );
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setPayVisible(true);
+  };
+
+  const handlePaymentSuccess = async (method: PaymentMethod) => {
+    setPayVisible(false);
+    await addInAppNotification({
+      title: "Subscription Payment Confirmed",
+      body: `NPR 2,000 paid via ${method === "esewa" ? "eSewa" : "Khalti"}. Your Sikshya Pro plan is active for July 2025.`,
+      type: "payment",
+    });
+    await refreshNotifs();
+    if (Platform.OS === "web") window.alert("Payment Successful!\n\nYour Sikshya Pro subscription is now active. Happy teaching!");
+    else Alert.alert("Payment Successful!", "Your Sikshya Pro subscription is now active. Happy teaching!");
   };
 
   return (
@@ -57,7 +60,16 @@ export default function Subscription() {
       contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={[styles.title, { color: colors.foreground }]}>Subscription</Text>
+      {from === "notif" ? (
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={handleBack} style={styles.backBtn} accessibilityLabel="Back to notifications">
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.foreground }]}>Subscription</Text>
+        </View>
+      ) : (
+        <Text style={[styles.title, { color: colors.foreground }]}>Subscription</Text>
+      )}
 
       <LinearGradient
         colors={["#1A365D", "#2D4A7A"]}
@@ -176,12 +188,23 @@ export default function Subscription() {
           <Text style={[styles.historyAmount, { color: colors.success }]}>NPR {p.amount.toLocaleString()}</Text>
         </View>
       ))}
+
+      <PaymentSheet
+        visible={payVisible}
+        amount={2000}
+        label="Sikshya Pro · Monthly"
+        initialMethod={selectedMethod}
+        onClose={() => setPayVisible(false)}
+        onSuccess={handlePaymentSuccess}
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 20, gap: 16 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  backBtn: { width: 36, height: 36, justifyContent: "center", marginLeft: -8 },
   title: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   planCard: { borderRadius: 20, padding: 22, gap: 16 },
   planHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
