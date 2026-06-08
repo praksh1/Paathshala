@@ -6,7 +6,7 @@ import {
   useFonts,
 } from "@expo-google-fonts/inter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -14,29 +14,57 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { AuthProvider } from "@/context/AuthContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+function AuthGuard() {
+  const { user, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (isLoading) return;
+
+    const inTeacherGroup = segments[0] === "(teacher)";
+    const inStudentGroup = segments[0] === "(student)";
+    const inAuthGroup = segments[0] === "(auth)";
+    const inProtectedGroup = inTeacherGroup || inStudentGroup;
+
+    if (!user) {
+      if (inProtectedGroup) router.replace("/");
+    } else if (user.role === "teacher") {
+      if (!inTeacherGroup && !inAuthGroup) router.replace("/(teacher)");
+    } else if (user.role === "student") {
+      if (!inStudentGroup && !inAuthGroup) router.replace("/(student)");
+    }
+  }, [user, isLoading, segments]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(teacher)" />
-      <Stack.Screen name="(student)" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen
-        name="notifications"
-        options={{
-          animation: "slide_from_right",
-          presentation: "card",
-        }}
-      />
-    </Stack>
+    <>
+      <AuthGuard />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(teacher)" />
+        <Stack.Screen name="(student)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="notifications"
+          options={{
+            animation: "slide_from_right",
+            presentation: "card",
+          }}
+        />
+      </Stack>
+    </>
   );
 }
 
