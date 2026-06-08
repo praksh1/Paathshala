@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useCallback, useState } from "react";
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "@/context/AuthContext";
@@ -34,7 +34,7 @@ export default function StudentSessions() {
   useFocusEffect(
     useCallback(() => {
       loadSessions();
-    }, [])
+    }, [student?.userId])
   );
 
   const loadSessions = async () => {
@@ -73,20 +73,31 @@ export default function StudentSessions() {
   };
 
   const joinSession = (session: Session) => {
-    if (session.status !== "live") {
-      Alert.alert("Session Not Started", "This session hasn't started yet. Please join at the scheduled time.");
+    if (session.status === "upcoming") {
+      const sessionDate = new Date(session.date);
+      const timeStr = sessionDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const dateStr = sessionDate.toLocaleDateString("en-NP", { weekday: "short", month: "short", day: "numeric" });
+      const msg = `"${session.topic}" starts on ${dateStr} at ${timeStr}.\n\nYou're enrolled! Come back at that time to join.`;
+      if (Platform.OS === "web") window.alert(`Session Upcoming\n\n${msg}`);
+      else Alert.alert("Session Upcoming", msg, [{ text: "Got it" }]);
       return;
     }
-    Alert.alert("Join Session", `Join "${session.topic}" by ${session.teacherName}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Pay & Join",
-        onPress: () => Alert.alert("Payment", `NPR ${session.price.toLocaleString()} will be charged via eSewa/Khalti. Continue?`, [
-          { text: "Cancel", style: "cancel" },
-          { text: "Proceed", onPress: () => Alert.alert("Joined!", "You have joined the session.") },
-        ]),
-      },
-    ]);
+    if (session.status === "completed" || session.status === "cancelled") {
+      if (Platform.OS === "web") window.alert("This session has already ended.");
+      else Alert.alert("Session Ended", "This session has already ended.");
+      return;
+    }
+    const msg = `Join "${session.topic}" by ${session.teacherName}?\n\nNPR ${session.price.toLocaleString()} will be charged via your enrolled payment method.`;
+    if (Platform.OS === "web") {
+      if (window.confirm(`Join Live Session\n\n${msg}`)) {
+        router.push(`/(student)/classroom/${session.id}`);
+      }
+    } else {
+      Alert.alert("Join Live Session", msg, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Join Now", onPress: () => router.push(`/(student)/classroom/${session.id}`) },
+      ]);
+    }
   };
 
   const liveSessions = sessions.filter((s) => s.status === "live");
@@ -113,9 +124,17 @@ export default function StudentSessions() {
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Live Now</Text>
                 </View>
                 {liveSessions.map((s) => (
-                  <TouchableOpacity key={s.id} onPress={() => joinSession(s)} activeOpacity={0.85}>
-                    <SessionCard session={s} showTeacher />
-                  </TouchableOpacity>
+                  <View key={s.id}>
+                    <SessionCard session={s} showTeacher onPress={() => joinSession(s)} />
+                    <TouchableOpacity
+                      style={[styles.joinBtn, { backgroundColor: colors.success }]}
+                      onPress={() => joinSession(s)}
+                      activeOpacity={0.85}
+                    >
+                      <Feather name="video" size={16} color="#fff" />
+                      <Text style={styles.joinBtnText}>Join Live Session</Text>
+                    </TouchableOpacity>
+                  </View>
                 ))}
               </View>
             )}
@@ -170,6 +189,8 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
   liveIndicator: { width: 10, height: 10, borderRadius: 5 },
   sectionTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginBottom: 8 },
+  joinBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 12, marginTop: -4, marginBottom: 8 },
+  joinBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
   empty: { alignItems: "center", paddingTop: 80, gap: 12 },
   emptyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   emptyText: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },

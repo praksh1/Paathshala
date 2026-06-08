@@ -1,19 +1,27 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "@/context/AuthContext";
+import { apiGet, apiPatch } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 import { useNotifications } from "@/context/NotificationContext";
 import { sendDemoNotification } from "@/utils/notifications";
 import type { Teacher } from "@/context/AuthContext";
 
-const UPCOMING_SESSIONS = [
-  { id: "s1", subject: "Mathematics", topic: "Calculus: Derivatives", time: "Today, 4:00 PM", students: 12, max: 20 },
-  { id: "s2", subject: "Mathematics", topic: "Integration Techniques", time: "Tomorrow, 3:30 PM", students: 8, max: 20 },
-];
+interface ApiSession {
+  id: number;
+  subject: string;
+  topic: string;
+  date: string;
+  duration: number;
+  maxStudents: number;
+  enrolledCount: number;
+  status: string;
+}
 
 export default function TeacherDashboard() {
   const { user, logout } = useAuth();
@@ -21,16 +29,50 @@ export default function TeacherDashboard() {
   const insets = useSafeAreaInsets();
   const { unreadCount, refresh: refreshNotifs } = useNotifications();
   const teacher = user as Teacher;
+  const [upcomingSessions, setUpcomingSessions] = useState<ApiSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
-  useEffect(() => {
-    refreshNotifs();
-    sendDemoNotification();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      refreshNotifs();
+      sendDemoNotification();
+      loadSessions();
+    }, [teacher?.userId])
+  );
+
+  const loadSessions = async () => {
+    if (!teacher?.userId) return;
+    setSessionsLoading(true);
+    try {
+      const res = await apiGet<{ sessions: ApiSession[] }>(
+        `/sessions?teacherId=${teacher.userId}&status=upcoming&limit=5`
+      );
+      setUpcomingSessions(res.sessions);
+    } catch {}
+    setSessionsLoading(false);
+  };
+
+  const startSession = async (session: ApiSession) => {
+    try {
+      await apiPatch(`/sessions/${session.id}`, { status: "live" });
+    } catch {}
+    router.push(`/(teacher)/classroom/${session.id}`);
+  };
 
   if (!teacher) return null;
 
   const isPending = teacher.approvalStatus === "pending";
   const isRejected = teacher.approvalStatus === "rejected";
+
+  const formatSessionTime = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (diffDays === 0) return `Today, ${timeStr}`;
+    if (diffDays === 1) return `Tomorrow, ${timeStr}`;
+    return `${d.toLocaleDateString("en-NP", { month: "short", day: "numeric" })}, ${timeStr}`;
+  };
 
   return (
     <ScrollView
@@ -141,29 +183,52 @@ export default function TeacherDashboard() {
         </TouchableOpacity>
       </View>
 
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Upcoming Sessions</Text>
-      {UPCOMING_SESSIONS.map((session) => (
-        <TouchableOpacity
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Upcoming Sessions</Text>
+        {sessionsLoading && <ActivityIndicator size="small" color={colors.primary} />}
+      </View>
+
+      {!sessionsLoading && upcomingSessions.length === 0 && (
+        <View style={[styles.emptyCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+          <Feather name="calendar" size={24} color={colors.mutedForeground} />
+          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+            No upcoming sessions. Create one to start teaching!
+          </Text>
+        </View>
+      )}
+
+      {upcomingSessions.map((session) => (
+        <View
           key={session.id}
           style={[styles.sessionRow, { backgroundColor: colors.card, borderColor: colors.border }]}
-          onPress={() => router.push(`/(teacher)/classroom/${session.id}`)}
-          activeOpacity={0.8}
         >
           <View style={[styles.sessionDot, { backgroundColor: colors.primary + "20" }]}>
             <Feather name="video" size={16} color={colors.primary} />
           </View>
           <View style={styles.sessionInfo}>
             <Text style={[styles.sessionSubject, { color: colors.primary }]}>{session.subject}</Text>
-            <Text style={[styles.sessionTopic, { color: colors.foreground }]}>{session.topic}</Text>
-            <Text style={[styles.sessionTime, { color: colors.mutedForeground }]}>{session.time}</Text>
+            <Text style={[styles.sessionTopic, { color: colors.foreground }]} numberOfLines={1}>
+              {session.topic}
+            </Text>
+            <Text style={[styles.sessionTime, { color: colors.mutedForeground }]}>
+              {formatSessionTime(session.date)}
+            </Text>
           </View>
           <View style={styles.sessionRight}>
             <Text style={[styles.studentCount, { color: colors.mutedForeground }]}>
-              {session.students}/{session.max}
+              {session.enrolledCount}/{session.maxStudents}
             </Text>
             <Feather name="users" size={13} color={colors.mutedForeground} />
+            <TouchableOpacity
+              style={[styles.startBtn, { backgroundColor: colors.primary }]}
+              onPress={() => startSession(session)}
+              activeOpacity={0.8}
+            >
+              <Feather name="play" size={12} color="#fff" />
+              <Text style={styles.startBtnText}>Start</Text>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       ))}
 
       {teacher.approvalStatus === "approved" && teacher.sessionsThisMonth >= 8 && (
@@ -206,15 +271,20 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
   actionBtnOutline: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, paddingVertical: 14, borderWidth: 1 },
   actionBtnOutlineText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   sectionTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginTop: 4 },
+  emptyCard: { borderRadius: 16, borderWidth: 1, padding: 20, flexDirection: "row", alignItems: "center", gap: 12 },
+  emptyText: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular" },
   sessionRow: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 16, borderWidth: 1, padding: 14 },
   sessionDot: { width: 44, height: 44, borderRadius: 12, justifyContent: "center", alignItems: "center" },
   sessionInfo: { flex: 1, gap: 2 },
   sessionSubject: { fontSize: 11, fontFamily: "Inter_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
   sessionTopic: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   sessionTime: { fontSize: 12, fontFamily: "Inter_400Regular" },
-  sessionRight: { alignItems: "center", gap: 2 },
+  sessionRight: { alignItems: "center", gap: 6 },
   studentCount: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  startBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6 },
+  startBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
   warningBanner: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, padding: 12 },
   warningText: { flex: 1, fontSize: 13, fontFamily: "Inter_400Regular" },
 });

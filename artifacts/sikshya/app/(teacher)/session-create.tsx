@@ -44,26 +44,43 @@ export default function SessionCreate() {
 
   const handleCreate = async () => {
     if (!topic.trim() || !date.trim() || !time.trim()) {
-      Alert.alert("Missing Info", "Please fill in topic, date, and time.");
+      if (Platform.OS === "web") window.alert("Missing Info\n\nPlease fill in topic, date, and time.");
+      else Alert.alert("Missing Info", "Please fill in topic, date, and time.");
+      return;
+    }
+    const parsed = new Date(`${date}T${time}:00`);
+    if (isNaN(parsed.getTime())) {
+      if (Platform.OS === "web") window.alert("Invalid Date/Time\n\nUse YYYY-MM-DD for date and HH:MM for time.");
+      else Alert.alert("Invalid Date/Time", "Use YYYY-MM-DD for date and HH:MM for time.");
       return;
     }
     setSaving(true);
     try {
-      const sessionDate = new Date(`${date}T${time}:00`).toISOString();
       const newSession = await apiPost<{ id: number; topic: string; date: string }>("/sessions", {
         subject,
         topic: topic.trim(),
-        date: sessionDate,
+        description: description.trim(),
+        date: parsed.toISOString(),
         duration,
         maxStudents,
         price: parseInt(price) || 500,
       });
-      await scheduleSessionReminder({ id: String(newSession.id), topic: newSession.topic, date: newSession.date });
-      await refreshNotifs();
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.back();
+      try { await scheduleSessionReminder({ id: String(newSession.id), topic: newSession.topic, date: newSession.date }); } catch {}
+      try { await refreshNotifs(); } catch {}
+      try { await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {}
+      if (Platform.OS === "web") {
+        window.alert(`Session Created!\n\n"${newSession.topic}" has been scheduled. You'll find it in your Sessions tab.`);
+        router.replace("/(teacher)/sessions");
+      } else {
+        Alert.alert(
+          "Session Created!",
+          `"${newSession.topic}" has been scheduled. You'll find it in your Sessions tab.`,
+          [{ text: "OK", onPress: () => router.replace("/(teacher)/sessions") }]
+        );
+      }
     } catch (_e) {
-      Alert.alert("Error", "Failed to create session. Please try again.");
+      if (Platform.OS === "web") window.alert("Error\n\nFailed to create session. Please check your inputs and try again.");
+      else Alert.alert("Error", "Failed to create session. Please check your inputs and try again.");
     } finally {
       setSaving(false);
     }
@@ -73,7 +90,7 @@ export default function SessionCreate() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         style={{ backgroundColor: colors.background }}
-        contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 120 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

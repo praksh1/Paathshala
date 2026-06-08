@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
@@ -44,6 +44,7 @@ export default function TeacherDetail() {
   const [reviews, setReviews] = useState<ApiReview[]>([]);
   const [myRating, setMyRating] = useState(0);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -80,20 +81,44 @@ export default function TeacherDetail() {
   };
 
   const bookSession = (session: Session) => {
-    Alert.alert(
-      "Book Session",
-      `"${session.topic}" — NPR ${session.price.toLocaleString()}\n\nPayment will be processed via eSewa/Khalti`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Book & Pay",
-          onPress: async () => {
-            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            Alert.alert("Booked!", "Session booked successfully. Check your Sessions tab for details.");
-          },
-        },
-      ]
-    );
+    if (Platform.OS === "web") {
+      const ok = window.confirm(
+        `Book Session\n\n"${session.topic}"\nNPR ${session.price.toLocaleString()}\n\nClick OK to pay via eSewa, or Cancel then choose Khalti.`
+      );
+      if (ok) confirmBooking(session, "esewa");
+      else if (window.confirm(`Pay via Khalti instead?\n\nNPR ${session.price.toLocaleString()}`)) {
+        confirmBooking(session, "khalti");
+      }
+    } else {
+      Alert.alert(
+        "Book Session",
+        `"${session.topic}"\nNPR ${session.price.toLocaleString()}\n\nChoose your payment method:`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Pay via eSewa", onPress: () => confirmBooking(session, "esewa") },
+          { text: "Pay via Khalti", onPress: () => confirmBooking(session, "khalti") },
+        ]
+      );
+    }
+  };
+
+  const confirmBooking = async (session: Session, paymentMethod: "esewa" | "khalti") => {
+    if (bookingSessionId === session.id) return;
+    setBookingSessionId(session.id);
+    try {
+      await apiPost(`/sessions/${session.id}/enroll`, { paymentMethod });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        "Booked!",
+        `Session enrolled successfully via ${paymentMethod === "esewa" ? "eSewa" : "Khalti"}.\n\nCheck your Sessions tab to join when the session goes live.`,
+        [{ text: "View My Sessions", onPress: () => router.push("/(student)/sessions") }, { text: "OK" }]
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Booking failed. Please try again.";
+      Alert.alert("Booking Failed", msg);
+    } finally {
+      setBookingSessionId(null);
+    }
   };
 
   const submitRating = async () => {
@@ -170,7 +195,27 @@ export default function TeacherDetail() {
           <View>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Available Sessions</Text>
             {sessions.map((s) => (
-              <SessionCard key={s.id} session={s} onPress={() => bookSession(s)} />
+              <TouchableOpacity
+                key={s.id}
+                onPress={() => bookSession(s)}
+                activeOpacity={0.85}
+                disabled={bookingSessionId === s.id}
+              >
+                <SessionCard session={s} onPress={() => bookSession(s)} />
+                <View style={[styles.bookBtnRow]}>
+                  <TouchableOpacity
+                    style={[styles.bookBtn, { backgroundColor: colors.primary }, bookingSessionId === s.id && { opacity: 0.6 }]}
+                    onPress={() => bookSession(s)}
+                    disabled={bookingSessionId === s.id}
+                    activeOpacity={0.85}
+                  >
+                    <Feather name="credit-card" size={14} color="#fff" />
+                    <Text style={styles.bookBtnText}>
+                      {bookingSessionId === s.id ? "Booking..." : `Book & Pay · NPR ${s.price.toLocaleString()}`}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}
@@ -266,6 +311,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
   noSessions: { borderRadius: 14, padding: 20, flexDirection: "row", alignItems: "center", gap: 12 },
   noSessionsText: { fontSize: 14, fontFamily: "Inter_400Regular", flex: 1 },
+  bookBtnRow: { marginTop: -4, marginBottom: 8, paddingHorizontal: 2 },
+  bookBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 12 },
+  bookBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#fff" },
   rateCard: { borderRadius: 18, borderWidth: 1, padding: 18, gap: 12, alignItems: "center" },
   rateSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular", textAlign: "center" },
   starRow: { paddingVertical: 8 },

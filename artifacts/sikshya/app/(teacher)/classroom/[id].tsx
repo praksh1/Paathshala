@@ -5,16 +5,20 @@ import React, { useRef, useState, useEffect } from "react";
 import {
   Alert,
   Dimensions,
+  KeyboardAvoidingView,
   PanResponder,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
+import { apiGet, apiPatch } from "@/utils/api";
 
 const { width: SCREEN_W } = Dimensions.get("window");
 
@@ -34,17 +38,19 @@ interface ChatMessage {
   isTeacher: boolean;
 }
 
+interface SessionData {
+  id: number;
+  topic: string;
+  subject: string;
+  teacherName: string;
+  duration: number;
+  maxStudents: number;
+  enrolledCount: number;
+  status: string;
+}
+
 const COLORS_PALETTE = ["#0D0D0D", "#C41E3A", "#1A365D", "#16A34A", "#F5A623", "#8B5CF6", "#FFFFFF"];
 const PEN_SIZES = [3, 6, 10];
-
-const PARTICIPANTS = [
-  { id: "p1", name: "Aarav Shrestha", active: true },
-  { id: "p2", name: "Sita Gurung", active: true },
-  { id: "p3", name: "Ramesh Karki", active: true },
-  { id: "p4", name: "Puja Rai", active: true },
-  { id: "p5", name: "Bikash Tamang", active: false },
-  { id: "p6", name: "Anita Basnet", active: true },
-];
 
 const INITIAL_CHAT: ChatMessage[] = [
   { id: "c1", sender: "Aarav", text: "Good afternoon sir!", time: "3:01 PM", isTeacher: false },
@@ -56,6 +62,7 @@ export default function Classroom() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
+  const [session, setSession] = useState<SessionData | null>(null);
   const [mode, setMode] = useState<Mode>("whiteboard");
   const [paths, setPaths] = useState<DrawPath[]>([]);
   const [currentPath, setCurrentPath] = useState<string>("");
@@ -67,12 +74,20 @@ export default function Classroom() {
   const [chat, setChat] = useState<ChatMessage[]>(INITIAL_CHAT);
   const [chatMsg, setChatMsg] = useState("");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const svgRef = useRef<View>(null);
+  const chatScrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
+    loadSession();
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, []);
+  }, [id]);
+
+  const loadSession = async () => {
+    try {
+      const data = await apiGet<SessionData>(`/sessions/${id}`);
+      setSession(data);
+    } catch {}
+  };
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60).toString().padStart(2, "0");
@@ -104,19 +119,30 @@ export default function Classroom() {
 
   const toggleRecording = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (!isRecording) {
-      Alert.alert("Recording Started", "This session is now being recorded. Copyright belongs to Sikshya.");
-    } else {
-      Alert.alert("Recording Saved", "Session recording has been uploaded to Sikshya cloud storage.");
-    }
-    setIsRecording(!isRecording);
+    const msg = !isRecording
+      ? "This session is now being recorded. Copyright belongs to Sikshya."
+      : "Session recording has been uploaded to Sikshya cloud storage.";
+    const title = !isRecording ? "Recording Started" : "Recording Saved";
+    if (Platform.OS === "web") window.alert(`${title}\n${msg}`);
+    else Alert.alert(title, msg);
+    setIsRecording((r) => !r);
   };
 
-  const leaveSession = () => {
-    Alert.alert("Leave Session?", "Students will remain in the session.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "End Session", style: "destructive", onPress: () => router.back() },
-    ]);
+  const endSession = async () => {
+    const doEnd = async () => {
+      try { await apiPatch(`/sessions/${id}`, { status: "completed" }); } catch {}
+      router.back();
+    };
+    if (Platform.OS === "web") {
+      if (window.confirm("End Session?\n\nThis will mark the session as completed and students will be disconnected.")) {
+        await doEnd();
+      }
+    } else {
+      Alert.alert("End Session?", "This will mark the session as completed and students will be disconnected.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "End Session", style: "destructive", onPress: doEnd },
+      ]);
+    }
   };
 
   const sendChat = () => {
@@ -130,178 +156,209 @@ export default function Classroom() {
     };
     setChat((prev) => [...prev, msg]);
     setChatMsg("");
+    setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
+  const participantCount = session?.enrolledCount ?? 6;
+
   return (
-    <View style={[styles.container, { backgroundColor: "#0A0A0A", paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.sessionInfo}>
-            <Text style={styles.sessionTitle}>Live Session</Text>
-            <Text style={styles.timer}>{formatTime(elapsed)}/60:00</Text>
-          </View>
-          <View style={[styles.liveTag, { backgroundColor: colors.primary }]}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE</Text>
-          </View>
-        </View>
-        <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={[styles.recBtn, { backgroundColor: isRecording ? colors.destructive : "#333" }]}
-            onPress={toggleRecording}
-            activeOpacity={0.8}
-          >
-            <Feather name="circle" size={14} color="#fff" />
-            <Text style={styles.recText}>{isRecording ? "Stop" : "Rec"}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.leaveBtn} onPress={leaveSession} activeOpacity={0.8}>
-            <Feather name="phone-off" size={16} color="#EF4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Participants count */}
-      <View style={styles.participants}>
-        <View style={styles.participantIcons}>
-          {PARTICIPANTS.slice(0, 5).map((p, i) => (
-            <View
-              key={p.id}
-              style={[styles.miniAvatar, { backgroundColor: ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444"][i % 5], marginLeft: i > 0 ? -10 : 0 }]}
-            >
-              <Text style={styles.miniAvatarText}>{p.name[0]}</Text>
-            </View>
-          ))}
-        </View>
-        <Text style={styles.participantCount}>{PARTICIPANTS.length} students</Text>
-      </View>
-
-      {/* Mode switcher */}
-      <View style={styles.modeSwitcher}>
-        {(["whiteboard", "participants", "chat"] as Mode[]).map((m) => (
-          <TouchableOpacity
-            key={m}
-            style={[styles.modeTab, mode === m && styles.modeTabActive]}
-            onPress={() => setMode(m)}
-            activeOpacity={0.7}
-          >
-            <Feather
-              name={m === "whiteboard" ? "edit-3" : m === "participants" ? "users" : "message-circle"}
-              size={16}
-              color={mode === m ? "#fff" : "#666"}
-            />
-            <Text style={[styles.modeTabText, mode === m && styles.modeTabTextActive]}>
-              {m === "whiteboard" ? "Board" : m === "participants" ? "Students" : "Chat"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* Main content area */}
-      {mode === "whiteboard" && (
-        <View style={styles.whiteboardArea}>
-          <View
-            ref={svgRef}
-            style={styles.canvas}
-            {...panResponder.panHandlers}
-          >
-            <Svg style={StyleSheet.absoluteFill}>
-              {paths.map((p, i) => (
-                <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              ))}
-              {currentPath ? (
-                <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              ) : null}
-            </Svg>
-          </View>
-
-          {/* Tools */}
-          <View style={styles.tools}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsInner}>
-              {COLORS_PALETTE.map((c) => (
-                <TouchableOpacity
-                  key={c}
-                  style={[styles.colorDot, { backgroundColor: c, borderColor: c === "#FFFFFF" ? "#555" : c, borderWidth: penColor === c && !isEraser ? 3 : 1, transform: [{ scale: penColor === c && !isEraser ? 1.3 : 1 }] }]}
-                  onPress={() => { setPenColor(c); setIsEraser(false); }}
-                  activeOpacity={0.7}
-                />
-              ))}
-              <View style={styles.toolDivider} />
-              {PEN_SIZES.map((s) => (
-                <TouchableOpacity
-                  key={s}
-                  style={[styles.sizeBtn, penSize === s && !isEraser && { borderColor: colors.primary }]}
-                  onPress={() => { setPenSize(s); setIsEraser(false); }}
-                  activeOpacity={0.7}
-                >
-                  <View style={{ width: s * 2, height: s * 2, borderRadius: s, backgroundColor: "#fff" }} />
-                </TouchableOpacity>
-              ))}
-              <View style={styles.toolDivider} />
-              <TouchableOpacity
-                style={[styles.toolIconBtn, isEraser && { backgroundColor: "#333" }]}
-                onPress={() => setIsEraser(!isEraser)}
-                activeOpacity={0.7}
-              >
-                <Feather name="delete" size={18} color={isEraser ? "#fff" : "#999"} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.toolIconBtn}
-                onPress={() => { setPaths([]); setCurrentPath(""); }}
-                activeOpacity={0.7}
-              >
-                <Feather name="trash-2" size={18} color="#999" />
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      )}
-
-      {mode === "participants" && (
-        <ScrollView style={styles.flex} contentContainerStyle={styles.participantGrid}>
-          {PARTICIPANTS.map((p) => (
-            <View key={p.id} style={styles.participantCard}>
-              <View style={[styles.bigAvatar, { backgroundColor: p.active ? "#1A365D" : "#333" }]}>
-                <Text style={styles.bigAvatarText}>{p.name.split(" ").map((n) => n[0]).join("")}</Text>
-                {!p.active && <View style={styles.inactiveOverlay}><Feather name="video-off" size={16} color="#666" /></View>}
-              </View>
-              <Text style={styles.participantName} numberOfLines={1}>{p.name.split(" ")[0]}</Text>
-              <View style={[styles.statusDot2, { backgroundColor: p.active ? "#22C55E" : "#555" }]} />
-            </View>
-          ))}
-        </ScrollView>
-      )}
-
-      {mode === "chat" && (
-        <View style={[styles.flex, styles.chatArea]}>
-          <ScrollView style={styles.flex} contentContainerStyle={styles.chatMessages}>
-            {chat.map((msg) => (
-              <View key={msg.id} style={[styles.chatBubble, msg.isTeacher && styles.chatBubbleTeacher]}>
-                {!msg.isTeacher && <Text style={styles.chatSender}>{msg.sender}</Text>}
-                <View style={[styles.bubbleContent, { backgroundColor: msg.isTeacher ? colors.primary : "#1E1E1E" }]}>
-                  <Text style={styles.chatText}>{msg.text}</Text>
-                </View>
-                <Text style={styles.chatTime}>{msg.time}</Text>
-              </View>
-            ))}
-          </ScrollView>
-          <View style={[styles.chatInput, { paddingBottom: insets.bottom + 8 }]}>
-            <View style={styles.chatInputInner}>
-              <Feather name="message-circle" size={18} color="#666" />
-              <Text
-                style={styles.chatPlaceholder}
-                onPress={() => Alert.alert("Chat", "Type a message to broadcast to all students")}
-              >
-                {chatMsg || "Message students..."}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#0A0A0A" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <View style={styles.sessionInfo}>
+              <Text style={styles.sessionTitle} numberOfLines={1}>
+                {session ? `${session.subject}: ${session.topic}` : "Live Session"}
               </Text>
+              <Text style={styles.timer}>{formatTime(elapsed)}/{String(session?.duration ?? 60).padStart(2, "0")}:00</Text>
             </View>
-            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: colors.primary }]} onPress={sendChat} activeOpacity={0.8}>
-              <Feather name="send" size={16} color="#fff" />
+            <View style={[styles.liveTag, { backgroundColor: colors.primary }]}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={[styles.recBtn, { backgroundColor: isRecording ? colors.destructive : "#333" }]}
+              onPress={toggleRecording}
+              activeOpacity={0.8}
+            >
+              <Feather name="circle" size={14} color="#fff" />
+              <Text style={styles.recText}>{isRecording ? "Stop" : "Rec"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.endBtn}
+              onPress={endSession}
+              activeOpacity={0.8}
+              accessibilityLabel="End Session"
+            >
+              <Feather name="phone-off" size={14} color="#EF4444" />
+              <Text style={styles.endBtnText}>End</Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
-    </View>
+
+        {/* Participants count */}
+        <View style={styles.participants}>
+          <View style={styles.participantIcons}>
+            {Array.from({ length: Math.min(participantCount, 5) }).map((_, i) => (
+              <View
+                key={i}
+                style={[styles.miniAvatar, { backgroundColor: ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444"][i % 5], marginLeft: i > 0 ? -10 : 0 }]}
+              >
+                <Text style={styles.miniAvatarText}>{String.fromCharCode(65 + i)}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.participantCount}>{participantCount} student{participantCount !== 1 ? "s" : ""}</Text>
+        </View>
+
+        {/* Mode switcher */}
+        <View style={styles.modeSwitcher}>
+          {(["whiteboard", "participants", "chat"] as Mode[]).map((m) => (
+            <TouchableOpacity
+              key={m}
+              style={[styles.modeTab, mode === m && styles.modeTabActive]}
+              onPress={() => setMode(m)}
+              activeOpacity={0.7}
+            >
+              <Feather
+                name={m === "whiteboard" ? "edit-3" : m === "participants" ? "users" : "message-circle"}
+                size={16}
+                color={mode === m ? "#fff" : "#666"}
+              />
+              <Text style={[styles.modeTabText, mode === m && styles.modeTabTextActive]}>
+                {m === "whiteboard" ? "Board" : m === "participants" ? "Students" : "Chat"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Whiteboard */}
+        {mode === "whiteboard" && (
+          <View style={styles.whiteboardArea}>
+            <View
+              style={styles.canvas}
+              {...panResponder.panHandlers}
+            >
+              <Svg style={StyleSheet.absoluteFill}>
+                {paths.map((p, i) => (
+                  <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                ))}
+                {currentPath ? (
+                  <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                ) : null}
+              </Svg>
+            </View>
+            <View style={styles.tools}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolsInner}>
+                {COLORS_PALETTE.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.colorDot, { backgroundColor: c, borderColor: c === "#FFFFFF" ? "#555" : c, borderWidth: penColor === c && !isEraser ? 3 : 1, transform: [{ scale: penColor === c && !isEraser ? 1.3 : 1 }] }]}
+                    onPress={() => { setPenColor(c); setIsEraser(false); }}
+                    activeOpacity={0.7}
+                  />
+                ))}
+                <View style={styles.toolDivider} />
+                {PEN_SIZES.map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.sizeBtn, penSize === s && !isEraser && { borderColor: colors.primary }]}
+                    onPress={() => { setPenSize(s); setIsEraser(false); }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ width: s * 2, height: s * 2, borderRadius: s, backgroundColor: "#fff" }} />
+                  </TouchableOpacity>
+                ))}
+                <View style={styles.toolDivider} />
+                <TouchableOpacity
+                  style={[styles.toolIconBtn, isEraser && { backgroundColor: "#333" }]}
+                  onPress={() => setIsEraser(!isEraser)}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="delete" size={18} color={isEraser ? "#fff" : "#999"} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.toolIconBtn}
+                  onPress={() => { setPaths([]); setCurrentPath(""); }}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="trash-2" size={18} color="#999" />
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        )}
+
+        {/* Participants */}
+        {mode === "participants" && (
+          <ScrollView style={styles.flex} contentContainerStyle={styles.participantGrid}>
+            {Array.from({ length: participantCount }).map((_, i) => {
+              const names = ["Aarav S.", "Sita G.", "Ramesh K.", "Puja R.", "Bikash T.", "Anita B.", "Dinesh M.", "Kamala R."];
+              const name = names[i % names.length];
+              const active = i % 5 !== 4;
+              return (
+                <View key={i} style={styles.participantCard}>
+                  <View style={[styles.bigAvatar, { backgroundColor: active ? "#1A365D" : "#333" }]}>
+                    <Text style={styles.bigAvatarText}>{name.split(" ").map((n) => n[0]).join("")}</Text>
+                    {!active && <View style={styles.inactiveOverlay}><Feather name="video-off" size={16} color="#666" /></View>}
+                  </View>
+                  <Text style={styles.participantName} numberOfLines={1}>{name.split(" ")[0]}</Text>
+                  <View style={[styles.statusDot2, { backgroundColor: active ? "#22C55E" : "#555" }]} />
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
+
+        {/* Chat */}
+        {mode === "chat" && (
+          <View style={[styles.flex, styles.chatArea]}>
+            <ScrollView
+              ref={chatScrollRef}
+              style={styles.flex}
+              contentContainerStyle={styles.chatMessages}
+              onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: false })}
+            >
+              {chat.map((msg) => (
+                <View key={msg.id} style={[styles.chatBubble, msg.isTeacher && styles.chatBubbleTeacher]}>
+                  {!msg.isTeacher && <Text style={styles.chatSender}>{msg.sender}</Text>}
+                  <View style={[styles.bubbleContent, { backgroundColor: msg.isTeacher ? colors.primary : "#1E1E1E" }]}>
+                    <Text style={styles.chatText}>{msg.text}</Text>
+                  </View>
+                  <Text style={styles.chatTime}>{msg.time}</Text>
+                </View>
+              ))}
+            </ScrollView>
+            <View style={[styles.chatInputRow, { paddingBottom: insets.bottom + 8 }]}>
+              <TextInput
+                style={styles.chatInputField}
+                value={chatMsg}
+                onChangeText={setChatMsg}
+                placeholder="Message students..."
+                placeholderTextColor="#555"
+                onSubmitEditing={sendChat}
+                returnKeyType="send"
+                accessibilityLabel="chat input"
+                testID="chat-input"
+              />
+              <TouchableOpacity
+                style={[styles.sendBtn, { backgroundColor: colors.primary }]}
+                onPress={sendChat}
+                activeOpacity={0.8}
+              >
+                <Feather name="send" size={16} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -309,8 +366,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10 },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
-  sessionInfo: {},
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10, flex: 1 },
+  sessionInfo: { flex: 1 },
   sessionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#fff" },
   timer: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#999" },
   liveTag: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
@@ -320,6 +377,8 @@ const styles = StyleSheet.create({
   recBtn: { flexDirection: "row", alignItems: "center", gap: 5, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7 },
   recText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
   leaveBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
+  endBtn: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, backgroundColor: "#1A1A1A", paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: "#EF4444" },
+  endBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#EF4444" },
   participants: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingBottom: 8 },
   participantIcons: { flexDirection: "row" },
   miniAvatar: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "#0A0A0A" },
@@ -353,8 +412,7 @@ const styles = StyleSheet.create({
   bubbleContent: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10 },
   chatText: { fontSize: 14, fontFamily: "Inter_400Regular", color: "#fff" },
   chatTime: { fontSize: 10, fontFamily: "Inter_400Regular", color: "#555" },
-  chatInput: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#1A1A1A" },
-  chatInputInner: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#1A1A1A", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 12 },
-  chatPlaceholder: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", color: "#555" },
+  chatInputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#1A1A1A" },
+  chatInputField: { flex: 1, backgroundColor: "#1A1A1A", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 12, fontSize: 14, fontFamily: "Inter_400Regular", color: "#fff", outlineStyle: "none" } as object,
   sendBtn: { width: 42, height: 42, borderRadius: 21, justifyContent: "center", alignItems: "center" },
 });
