@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import React from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -17,6 +18,23 @@ export default function StudentProfile() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const student = user as Student;
+
+  const doLogout = async () => {
+    await logout();
+    router.replace("/welcome");
+  };
+
+  const handleLogout = () => {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && !window.confirm("Are you sure you want to log out?")) return;
+      doLogout();
+      return;
+    }
+    Alert.alert("Log Out", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log Out", style: "destructive", onPress: doLogout },
+    ]);
+  };
 
   if (!student) return null;
 
@@ -118,12 +136,7 @@ export default function StudentProfile() {
 
       <TouchableOpacity
         style={[styles.logoutBtn, { borderColor: colors.destructive + "40", backgroundColor: colors.destructive + "08" }]}
-        onPress={() => {
-          Alert.alert("Log Out", "Are you sure?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Log Out", style: "destructive", onPress: logout },
-          ]);
-        }}
+        onPress={handleLogout}
         activeOpacity={0.7}
       >
         <Feather name="log-out" size={18} color={colors.destructive} />

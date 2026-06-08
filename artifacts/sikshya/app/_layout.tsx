@@ -32,14 +32,15 @@ function AuthGuard() {
     const inTeacherGroup = segments[0] === "(teacher)";
     const inStudentGroup = segments[0] === "(student)";
     const inAuthGroup = segments[0] === "(auth)";
+    const onSharedScreen = segments[0] === "notifications";
     const inProtectedGroup = inTeacherGroup || inStudentGroup;
 
     if (!user) {
-      if (inProtectedGroup) router.replace("/");
+      if (inProtectedGroup || onSharedScreen) router.replace("/welcome");
     } else if (user.role === "teacher") {
-      if (!inTeacherGroup && !inAuthGroup) router.replace("/(teacher)");
+      if (!inTeacherGroup && !inAuthGroup && !onSharedScreen) router.replace("/(teacher)");
     } else if (user.role === "student") {
-      if (!inStudentGroup && !inAuthGroup) router.replace("/(student)");
+      if (!inStudentGroup && !inAuthGroup && !onSharedScreen) router.replace("/(student)");
     }
   }, [user, isLoading, segments]);
 
@@ -52,10 +53,10 @@ function RootLayoutNav() {
       <AuthGuard />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="welcome" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(teacher)" />
         <Stack.Screen name="(student)" />
-        <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="notifications"
           options={{

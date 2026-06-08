@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useAuth } from "@/context/AuthContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useColors } from "@/hooks/useColors";
 import type { AppNotification } from "@/utils/notifications";
@@ -48,6 +49,7 @@ function isToday(dateStr: string): boolean {
 export default function NotificationsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { notifications, unreadCount, markRead, refresh } = useNotifications();
 
   useEffect(() => {
@@ -58,8 +60,24 @@ export default function NotificationsScreen() {
   const earlierNotifs = notifications.filter((n) => !isToday(n.createdAt));
 
   const handleMarkRead = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     await markRead();
+  };
+
+  const handleNotifPress = async (item: AppNotification) => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    await markRead();
+    const role = user?.role;
+    const home = role === "teacher" ? "/(teacher)" : role === "student" ? "/(student)" : "/welcome";
+    if (item.type === "session_reminder" || item.type === "live") {
+      if (role === "teacher") router.replace("/(teacher)/sessions");
+      else if (role === "student") router.replace("/(student)/sessions");
+      else router.replace(home);
+    } else if (item.type === "payment" && role === "teacher") {
+      router.replace("/(teacher)/subscription");
+    } else {
+      router.replace(home);
+    }
   };
 
   const renderItem = ({ item }: { item: AppNotification }) => {
@@ -74,7 +92,7 @@ export default function NotificationsScreen() {
           },
         ]}
         activeOpacity={0.7}
-        onPress={() => {}}
+        onPress={() => handleNotifPress(item)}
       >
         <View style={[styles.iconWrap, { backgroundColor: config.bg }]}>
           <Feather name={config.icon as "clock"} size={18} color={config.color} />

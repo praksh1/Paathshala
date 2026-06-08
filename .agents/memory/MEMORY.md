@@ -1,3 +1,4 @@
 - [Sikshya API-Zod collision fix](api-zod-collision.md) — drop `types` re-export from `lib/api-zod/src/index.ts` to avoid `*Params` name collision
 - [Sikshya teacher ID convention](teacher-id-convention.md) — mobile `Teacher.id = String(teacherProfiles.id)`, `Teacher.userId = users.id` for sessions/reviews
 - [Sikshya seed script pattern](seed-pattern.md) — direct relative import of DB schema in tsx scripts avoids ESM/workspace build issues
+- [Expo Router "/" conflict traps logout](expo-router-root-index-conflict.md) — never replace("/") to escape a group; use unambiguous route + whitelist shared screens in AuthGuard

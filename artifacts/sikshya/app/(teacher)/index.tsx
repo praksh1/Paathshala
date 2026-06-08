@@ -59,6 +59,11 @@ export default function TeacherDashboard() {
     router.push(`/(teacher)/classroom/${session.id}`);
   };
 
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/welcome");
+  };
+
   if (!teacher) return null;
 
   const isPending = teacher.approvalStatus === "pending";
@@ -100,7 +105,7 @@ export default function TeacherDashboard() {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconBtn, { borderColor: colors.border }]}
-            onPress={logout}
+            onPress={handleLogout}
             activeOpacity={0.7}
           >
             <Feather name="log-out" size={18} color={colors.mutedForeground} />
@@ -198,9 +203,11 @@ export default function TeacherDashboard() {
       )}
 
       {upcomingSessions.map((session) => (
-        <View
+        <TouchableOpacity
           key={session.id}
           style={[styles.sessionRow, { backgroundColor: colors.card, borderColor: colors.border }]}
+          onPress={() => startSession(session)}
+          activeOpacity={0.7}
         >
           <View style={[styles.sessionDot, { backgroundColor: colors.primary + "20" }]}>
             <Feather name="video" size={16} color={colors.primary} />
@@ -228,7 +235,7 @@ export default function TeacherDashboard() {
               <Text style={styles.startBtnText}>Start</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </TouchableOpacity>
       ))}
 
       {teacher.approvalStatus === "approved" && teacher.sessionsThisMonth >= 8 && (

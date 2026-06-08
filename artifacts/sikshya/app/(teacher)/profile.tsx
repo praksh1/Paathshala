@@ -2,8 +2,9 @@ import { Feather } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import React, { useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import { useColors } from "@/hooks/useColors";
@@ -23,6 +24,23 @@ export default function TeacherProfile() {
   const insets = useSafeAreaInsets();
   const teacher = user as Teacher;
   const [uploading, setUploading] = useState(false);
+
+  const doLogout = async () => {
+    await logout();
+    router.replace("/welcome");
+  };
+
+  const handleLogout = () => {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && !window.confirm("Are you sure you want to log out?")) return;
+      doLogout();
+      return;
+    }
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log Out", style: "destructive", onPress: doLogout },
+    ]);
+  };
 
   if (!teacher) return null;
 
@@ -154,12 +172,7 @@ export default function TeacherProfile() {
 
       <TouchableOpacity
         style={[styles.logoutBtn, { borderColor: colors.destructive + "40", backgroundColor: colors.destructive + "08" }]}
-        onPress={() => {
-          Alert.alert("Log Out", "Are you sure you want to log out?", [
-            { text: "Cancel", style: "cancel" },
-            { text: "Log Out", style: "destructive", onPress: logout },
-          ]);
-        }}
+        onPress={handleLogout}
         activeOpacity={0.7}
       >
         <Feather name="log-out" size={18} color={colors.destructive} />
