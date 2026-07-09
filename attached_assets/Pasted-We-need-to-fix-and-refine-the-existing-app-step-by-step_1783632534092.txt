@@ -1,0 +1,16 @@
+We need to fix and refine the existing app step-by-step. To minimize AI token usage and prevent code-breaking loops, please execute these fixes one section at a time. Do not move to the next section until the previous one is fully functional.
+
+PHASE 1: Core Classroom & Video Call Fixes (Highest Priority)
+1. Fix the Call Loading Loop: Change the Jitsi video call domain away from meet.jit.si or 8x8.vc. Switch the external API script to Freifunk München: `https://meet.ffmuc.net/external_api.js` and initialize the domain as 'meet.ffmuc.net'. This bypasses the forced popup login requirements that are breaking inside our iframe.
+2. Auto-Start Call & Audio: In the Jitsi initialization options, pass `configOverwrite: { prejoinPageEnabled: false, startWithAudioMuted: false }` so the call starts instantly and audio is active.
+3. Blackboard Upgrade: Add a simple HTML `<input type="file" accept="image/*,.pdf">` button next to the blackboard. When a teacher uploads a document, render that image/PDF page as the background layer of the canvas element so they can draw directly on top of their teaching materials.
+
+PHASE 2: Form & Role Security Bugfixes
+1. Date Picker: Find the session creation form. Change the manual date text input to a native HTML5 date input (`<input type="date">`).
+2. Strict Access Control: Add a client-side route guard to the Teacher Dashboard. If a user with a 'student' role logs in or navigates here, clear the unauthorized state and redirect them immediately to the student home page with an "Access Denied" alert.
+
+PHASE 3: Nepal-Specific Infrastructure (Lightweight Mocks)
+1. Document Verification: On the teacher registration page, add a secure file upload input for "Identity Documents/Credentials". For now, save the file reference in the database with an `isApproved: false` flag so admins can manually toggle approval later.
+2. Localized Payment Setup: Instead of building an expensive custom payment gateway, prepare the database and UI to accept standard Nepali payment gateway APIs (like Khalti or eSewa web checkouts). Create a clean payment button that records the transaction status locally.
+
+Please start with PHASE 1. Update the files required for the video call and blackboard background uploads first, and show me when it is ready for testing.
