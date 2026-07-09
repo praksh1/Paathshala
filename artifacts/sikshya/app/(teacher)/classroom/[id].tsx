@@ -195,7 +195,7 @@ export default function Classroom() {
 
   const participantCount = presenceCount > 0 ? presenceCount : (session?.enrolledCount ?? 0);
 
-  const roomName = `SikshyaSession${id}`;
+  const roomName = `SikshyaSession${String(id ?? "").replace(/[^a-zA-Z0-9]/g, "")}`;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0A0A0A" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>

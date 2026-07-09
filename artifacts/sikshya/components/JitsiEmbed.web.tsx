@@ -49,9 +49,11 @@ export default function JitsiEmbed({ roomName, displayName, style }: Props) {
   useEffect(() => {
     let cancelled = false;
 
+    if (!roomName) return;
+
     loadJitsiScript()
       .then(() => {
-        if (cancelled || !containerRef.current || !window.JitsiMeetExternalAPI) return;
+        if (cancelled || !containerRef.current || !window.JitsiMeetExternalAPI || !roomName) return;
 
         apiRef.current = new window.JitsiMeetExternalAPI(JITSI_DOMAIN, {
           roomName,

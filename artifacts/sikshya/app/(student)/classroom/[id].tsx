@@ -101,7 +101,7 @@ export default function StudentClassroom() {
     }
   };
 
-  const roomName = `SikshyaSession${id}`;
+  const roomName = `SikshyaSession${String(id ?? "").replace(/[^a-zA-Z0-9]/g, "")}`;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0A0A0A" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
