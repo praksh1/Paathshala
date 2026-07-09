@@ -8,8 +8,10 @@ interface Props {
   style?: StyleProp<ViewStyle>;
 }
 
+const JITSI_DOMAIN = "meet.ffmuc.net";
+
 export default function JitsiEmbed({ roomName, displayName, style }: Props) {
-  const url = `https://meet.jit.si/${roomName}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.disableDeepLinking=true&userInfo.displayName=${encodeURIComponent(displayName)}`;
+  const url = `https://${JITSI_DOMAIN}/${roomName}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.disableDeepLinking=true&userInfo.displayName=${encodeURIComponent(displayName)}`;
 
   return (
     <WebView
