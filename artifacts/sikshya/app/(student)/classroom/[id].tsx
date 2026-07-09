@@ -21,7 +21,9 @@ import { useAuth } from "@/context/AuthContext";
 import type { Student } from "@/context/AuthContext";
 import { apiGet } from "@/utils/api";
 import { useClassroomSocket } from "@/hooks/useClassroomSocket";
+import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import JitsiEmbed from "@/components/JitsiEmbed";
+import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
 type Mode = "board" | "chat" | "call";
@@ -41,8 +43,10 @@ export default function StudentClassroom() {
 
   const studentName = student.name ?? "Student";
 
-  const { connected, presenceCount, messages, remotePaths, floatingReactions, sendChat, sendReaction } =
+  const { connected, presenceCount, messages, remotePaths, floatingReactions, material, sendChat, sendReaction } =
     useClassroomSocket({ sessionId: id ?? "", name: studentName, role: "student" });
+
+  useMediaPermissions();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -157,12 +161,20 @@ export default function StudentClassroom() {
         {/* Board — live whiteboard from teacher */}
         {mode === "board" && (
           <View style={s.boardArea}>
+            {material?.kind === "image" && (
+              <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+            )}
+            {material?.kind === "pdf" && Platform.OS === "web" &&
+              React.createElement("iframe", {
+                src: material.dataUrl,
+                style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none", pointerEvents: "none" },
+              })}
             <Svg style={StyleSheet.absoluteFill}>
               {remotePaths.map((p, i) => (
                 <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
               ))}
             </Svg>
-            {remotePaths.length === 0 && (
+            {remotePaths.length === 0 && !material && (
               <View style={s.boardEmpty}>
                 <Feather name="edit-3" size={36} color="#CCC" />
                 <Text style={s.boardEmptyTitle}>Teacher's Whiteboard</Text>

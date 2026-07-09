@@ -26,6 +26,11 @@ export interface FloatingReaction {
   x: number;
 }
 
+export interface BoardMaterial {
+  kind: "image" | "pdf";
+  dataUrl: string;
+}
+
 function getWsUrl(sessionId: string, token: string, name: string): string {
   const params = new URLSearchParams({ sessionId, token, name });
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
@@ -49,10 +54,13 @@ interface Result {
   messages: ChatMessage[];
   remotePaths: DrawPath[];
   floatingReactions: FloatingReaction[];
+  material: BoardMaterial | null;
   sendChat: (text: string) => void;
   sendReaction: (emoji: string) => void;
   sendDrawCommit: (d: string, color: string, width: number) => void;
   sendBoardClear: () => void;
+  sendMaterial: (dataUrl: string, kind: "image" | "pdf") => void;
+  clearMaterial: () => void;
 }
 
 export function useClassroomSocket({ sessionId, name, role }: Options): Result {
@@ -61,6 +69,7 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [remotePaths, setRemotePaths] = useState<DrawPath[]>([]);
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
+  const [material, setMaterial] = useState<BoardMaterial | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,6 +147,12 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
         case "reaction":
           addFloating(msg.emoji as string, msg.senderName as string);
           break;
+        case "material_set":
+          setMaterial({ kind: msg.kind as "image" | "pdf", dataUrl: msg.dataUrl as string });
+          break;
+        case "material_clear":
+          setMaterial(null);
+          break;
       }
     };
 
@@ -193,5 +208,31 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
 
   const sendBoardClear = useCallback(() => send({ type: "board_clear" }), [send]);
 
-  return { connected, presenceCount, messages, remotePaths, floatingReactions, sendChat, sendReaction, sendDrawCommit, sendBoardClear };
+  const sendMaterial = useCallback(
+    (dataUrl: string, kind: "image" | "pdf") => {
+      setMaterial({ dataUrl, kind });
+      send({ type: "material_set", dataUrl, kind });
+    },
+    [send],
+  );
+
+  const clearMaterial = useCallback(() => {
+    setMaterial(null);
+    send({ type: "material_clear" });
+  }, [send]);
+
+  return {
+    connected,
+    presenceCount,
+    messages,
+    remotePaths,
+    floatingReactions,
+    material,
+    sendChat,
+    sendReaction,
+    sendDrawCommit,
+    sendBoardClear,
+    sendMaterial,
+    clearMaterial,
+  };
 }

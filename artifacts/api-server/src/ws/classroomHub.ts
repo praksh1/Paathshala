@@ -89,6 +89,13 @@ export function attachClassroomHub(server: http.Server): void {
         case "reaction":
           broadcast(sessionId, { type: "reaction", emoji: msg.emoji, senderName: name });
           break;
+        case "material_set":
+          if (role === "teacher")
+            broadcast(sessionId, { type: "material_set", kind: msg.kind, dataUrl: msg.dataUrl }, ws);
+          break;
+        case "material_clear":
+          if (role === "teacher") broadcast(sessionId, { type: "material_clear" }, ws);
+          break;
       }
     });
 

@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,10 +20,15 @@ import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 
+function showAccessDenied(message: string) {
+  if (Platform.OS === "web") window.alert(`Access Denied\n\n${message}`);
+  else Alert.alert("Access Denied", message);
+}
+
 export default function Login() {
   const { role } = useLocalSearchParams<{ role: "teacher" | "student" }>();
   const resolvedRole = (role === "teacher" || role === "student") ? role : "student";
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -44,9 +50,22 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const success = await login(email.trim(), password, resolvedRole);
+      const loggedInUser = await login(email.trim(), password, resolvedRole);
       setLoading(false);
-      if (success) router.replace("/");
+      if (!loggedInUser) {
+        setError("Login failed. Please try again.");
+        return;
+      }
+      if (loggedInUser.role !== resolvedRole) {
+        await logout();
+        const actualHome = loggedInUser.role === "teacher" ? "teacher" : "student";
+        showAccessDenied(
+          `This account is registered as a ${loggedInUser.role}, not a ${resolvedRole}. Please use the ${actualHome} login instead.`,
+        );
+        router.replace(loggedInUser.role === "teacher" ? "/(auth)/login?role=teacher" : "/(auth)/login?role=student");
+        return;
+      }
+      router.replace("/");
     } catch (e) {
       setLoading(false);
       setError(e instanceof ApiError ? e.message : "Login failed. Please try again.");

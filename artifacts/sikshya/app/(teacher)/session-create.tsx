@@ -186,13 +186,32 @@ export default function SessionCreate() {
             <Section title="Date *">
               <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <Feather name="calendar" size={16} color={colors.mutedForeground} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={[styles.input, { color: colors.foreground }]}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={date}
-                  onChangeText={setDate}
-                />
+                {Platform.OS === "web" ? (
+                  React.createElement("input", {
+                    type: "date",
+                    value: date,
+                    onChange: (e: any) => setDate(e.target.value),
+                    style: {
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      fontSize: 15,
+                      fontFamily: "Inter_400Regular",
+                      color: colors.foreground,
+                      width: "100%",
+                      colorScheme: colors.background === "#0A0A0A" || colors.background === "#000000" ? "dark" : "light",
+                    },
+                  })
+                ) : (
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground }]}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={date}
+                    onChangeText={setDate}
+                  />
+                )}
               </View>
             </Section>
           </View>
@@ -200,13 +219,32 @@ export default function SessionCreate() {
             <Section title="Time *">
               <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <Feather name="clock" size={16} color={colors.mutedForeground} style={{ marginRight: 8 }} />
-                <TextInput
-                  style={[styles.input, { color: colors.foreground }]}
-                  placeholder="HH:MM"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={time}
-                  onChangeText={setTime}
-                />
+                {Platform.OS === "web" ? (
+                  React.createElement("input", {
+                    type: "time",
+                    value: time,
+                    onChange: (e: any) => setTime(e.target.value),
+                    style: {
+                      flex: 1,
+                      border: "none",
+                      outline: "none",
+                      background: "transparent",
+                      fontSize: 15,
+                      fontFamily: "Inter_400Regular",
+                      color: colors.foreground,
+                      width: "100%",
+                      colorScheme: colors.background === "#0A0A0A" || colors.background === "#000000" ? "dark" : "light",
+                    },
+                  })
+                ) : (
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground }]}
+                    placeholder="HH:MM"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={time}
+                    onChangeText={setTime}
+                  />
+                )}
               </View>
             </Section>
           </View>

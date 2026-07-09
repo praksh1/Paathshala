@@ -73,7 +73,7 @@ interface RegisterData {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string, role: "teacher" | "student") => Promise<boolean>;
+  login: (email: string, password: string, role: "teacher" | "student") => Promise<User | null>;
   register: (data: RegisterData) => Promise<boolean>;
   logout: () => void;
   updateUser: (updates: Partial<User>) => Promise<void>;
@@ -173,7 +173,7 @@ function mapApiUserToUser(profile: ApiUserProfile): User | null {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
-  login: async () => false,
+  login: async () => null,
   register: async () => false,
   logout: () => {},
   updateUser: async () => {},
@@ -202,13 +202,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const login = async (email: string, password: string, _role: "teacher" | "student"): Promise<boolean> => {
+  const login = async (email: string, password: string, _role: "teacher" | "student"): Promise<User | null> => {
     const res = await apiPost<ApiAuthResponse>("/auth/login", { email, password });
     await setToken(res.token);
     const mapped = mapApiUserToUser(res.user);
-    if (!mapped) return false;
+    if (!mapped) return null;
     setUser(mapped);
-    return true;
+    return mapped;
   };
 
   const register = async (data: RegisterData): Promise<boolean> => {

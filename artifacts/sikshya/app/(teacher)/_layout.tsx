@@ -1,9 +1,26 @@
 import { BlurView } from "expo-blur";
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import React from "react";
+import React, { useEffect } from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 import { useColors } from "@/hooks/useColors";
+import { useAuth } from "@/context/AuthContext";
+
+function TeacherRoleGuard() {
+  const { user, logout } = useAuth();
+
+  useEffect(() => {
+    if (user && user.role !== "teacher") {
+      logout();
+      const message = "This account is registered as a student. You've been signed out for security.";
+      if (Platform.OS === "web") window.alert(`Access Denied\n\n${message}`);
+      router.replace("/(student)");
+    }
+  }, [user]);
+
+  if (user && user.role !== "teacher") return null;
+  return null;
+}
 
 function ClassicTabLayout() {
   const colors = useColors();
@@ -81,5 +98,10 @@ function ClassicTabLayout() {
 }
 
 export default function TeacherTabLayout() {
-  return <ClassicTabLayout />;
+  return (
+    <>
+      <TeacherRoleGuard />
+      <ClassicTabLayout />
+    </>
+  );
 }

@@ -24,7 +24,10 @@ import { useAuth } from "@/context/AuthContext";
 import type { Teacher } from "@/context/AuthContext";
 import { apiGet, apiPatch } from "@/utils/api";
 import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
+import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import JitsiEmbed from "@/components/JitsiEmbed";
+import * as DocumentPicker from "expo-document-picker";
+import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
 type Mode = "whiteboard" | "participants" | "chat" | "call";
@@ -48,8 +51,10 @@ export default function Classroom() {
 
   const teacherName = teacher.name ?? "Teacher";
 
-  const { connected, presenceCount, messages, floatingReactions, sendChat, sendReaction, sendDrawCommit, sendBoardClear } =
+  const { connected, presenceCount, messages, floatingReactions, material, sendChat, sendReaction, sendDrawCommit, sendBoardClear, sendMaterial, clearMaterial } =
     useClassroomSocket({ sessionId: id ?? "", name: teacherName, role: "teacher" });
+
+  useMediaPermissions();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [mode, setMode] = useState<Mode>("whiteboard");
@@ -118,6 +123,44 @@ export default function Classroom() {
     setPaths([]);
     setCurrentPath("");
     sendBoardClear();
+  };
+
+  const handleUploadMaterial = async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/png,image/jpeg,application/pdf";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const kind = file.type === "application/pdf" ? "pdf" : "image";
+          sendMaterial(dataUrl, kind);
+        };
+        reader.readAsDataURL(file);
+      };
+      input.click();
+      return;
+    }
+
+    try {
+      const doc = await DocumentPicker.getDocumentAsync({
+        type: ["image/png", "image/jpeg", "application/pdf"],
+        copyToCacheDirectory: true,
+      });
+      if (doc.canceled || !doc.assets?.[0]) return;
+      const asset = doc.assets[0];
+      const kind = asset.mimeType === "application/pdf" ? "pdf" : "image";
+      if (kind === "pdf") {
+        Alert.alert("PDF Preview", "PDF annotation backgrounds are supported on the web app. On mobile, please upload an image (PNG/JPG) instead.");
+        return;
+      }
+      sendMaterial(asset.uri, kind);
+    } catch {
+      Alert.alert("Upload Failed", "Could not upload the material. Please try again.");
+    }
   };
 
   const toggleRecording = async () => {
@@ -221,6 +264,14 @@ export default function Classroom() {
         {mode === "whiteboard" && (
           <View style={s.whiteboardArea}>
             <View style={s.canvas} {...panResponder.panHandlers}>
+              {material?.kind === "image" && (
+                <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+              )}
+              {material?.kind === "pdf" && Platform.OS === "web" &&
+                React.createElement("iframe", {
+                  src: material.dataUrl,
+                  style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none", borderRadius: 12, pointerEvents: "none" },
+                })}
               <Svg style={StyleSheet.absoluteFill}>
                 {paths.map((p, i) => (
                   <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -248,6 +299,16 @@ export default function Classroom() {
                 <TouchableOpacity style={s.toolIconBtn} onPress={clearBoard} activeOpacity={0.7}>
                   <Feather name="trash-2" size={17} color="#999" />
                 </TouchableOpacity>
+                <View style={s.toolDivider} />
+                <TouchableOpacity style={s.uploadBtn} onPress={handleUploadMaterial} activeOpacity={0.7}>
+                  <Feather name="upload" size={14} color="#fff" />
+                  <Text style={s.uploadBtnText}>Upload Material</Text>
+                </TouchableOpacity>
+                {material && (
+                  <TouchableOpacity style={s.toolIconBtn} onPress={clearMaterial} activeOpacity={0.7}>
+                    <Feather name="image" size={17} color="#EF4444" />
+                  </TouchableOpacity>
+                )}
               </ScrollView>
             </View>
             {/* Reactions bar on whiteboard */}
@@ -385,6 +446,8 @@ const s = StyleSheet.create({
   toolDivider: { width: 1, height: 26, backgroundColor: "#333", marginHorizontal: 2 },
   sizeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#333" },
   toolIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
+  uploadBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 17, backgroundColor: "#2A2A2A", paddingHorizontal: 12, height: 34 },
+  uploadBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
   reactionsBar: { flexDirection: "row", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#0D0D0D" },
   reactionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
   reactionEmoji: { fontSize: 20 },
