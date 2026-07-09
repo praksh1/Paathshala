@@ -16,12 +16,12 @@ import {
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import { WebView } from "react-native-webview";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import type { Student } from "@/context/AuthContext";
 import { apiGet } from "@/utils/api";
 import { useClassroomSocket } from "@/hooks/useClassroomSocket";
+import JitsiEmbed from "@/components/JitsiEmbed";
 
 const SCREEN_W = Dimensions.get("window").width;
 type Mode = "board" | "chat" | "call";
@@ -97,7 +97,7 @@ export default function StudentClassroom() {
     }
   };
 
-  const jitsiUrl = `https://meet.jit.si/SikshyaSession${id}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.disableDeepLinking=true`;
+  const roomName = `SikshyaSession${id}`;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0A0A0A" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -152,6 +152,8 @@ export default function StudentClassroom() {
           ))}
         </View>
 
+        {/* Content area — board/chat switch, call is a persistent overlay */}
+        <View style={s.contentArea}>
         {/* Board — live whiteboard from teacher */}
         {mode === "board" && (
           <View style={s.boardArea}>
@@ -211,31 +213,17 @@ export default function StudentClassroom() {
           </View>
         )}
 
-        {/* Call */}
-        {mode === "call" && (
-          <View style={s.flex}>
-            {Platform.OS === "web" ? (
-              <View style={s.callWeb}>
-                <Feather name="phone" size={44} color="#444" />
-                <Text style={s.callWebTitle}>Audio & Video Calls</Text>
-                <Text style={s.callWebSub}>
-                  Open the Sikshya app on your iOS or Android device to join live audio and video with your teacher.
-                </Text>
-                <Text style={s.callWebRoom}>Room: SikshyaSession{id}</Text>
-              </View>
-            ) : (
-              <WebView
-                source={{ uri: jitsiUrl }}
-                style={s.flex}
-                allowsInlineMediaPlayback
-                mediaPlaybackRequiresUserAction={false}
-                onPermissionRequest={(e: any) => e.nativeEvent.request.grant(e.nativeEvent.resources)}
-                javaScriptEnabled
-                domStorageEnabled
-              />
-            )}
-          </View>
-        )}
+        {/* Call — persistently mounted so it never reconnects when switching tabs.
+            Shown fullscreen on the Call tab, or as a floating PiP over the whiteboard otherwise. */}
+        <View style={mode === "call" ? s.jitsiFull : s.jitsiPip} pointerEvents="box-none">
+          <JitsiEmbed roomName={roomName} displayName={studentName} style={StyleSheet.absoluteFill} />
+          {mode !== "call" && (
+            <TouchableOpacity style={s.pipExpand} onPress={() => setMode("call")} activeOpacity={0.8}>
+              <Feather name="maximize-2" size={12} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
+        </View>
 
         {/* Floating reactions */}
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
@@ -306,8 +294,16 @@ const s = StyleSheet.create({
   inputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#1A1A1A" },
   input: { flex: 1, backgroundColor: "#1A1A1A", borderRadius: 24, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, fontFamily: "Inter_400Regular", color: "#fff" },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#C41E3A", justifyContent: "center", alignItems: "center" },
-  callWeb: { flex: 1, justifyContent: "center", alignItems: "center", padding: 32, gap: 16, backgroundColor: "#111" },
-  callWebTitle: { fontSize: 20, fontFamily: "Inter_600SemiBold", color: "#fff" },
-  callWebSub: { fontSize: 14, fontFamily: "Inter_400Regular", color: "#888", textAlign: "center", lineHeight: 22 },
-  callWebRoom: { fontSize: 12, fontFamily: "Inter_400Regular", color: "#555", marginTop: 8 },
+  contentArea: { flex: 1, position: "relative" },
+  jitsiFull: { ...StyleSheet.absoluteFillObject, backgroundColor: "#000", zIndex: 30 },
+  jitsiPip: {
+    position: "absolute", bottom: 14, right: 14, width: 118, height: 158,
+    borderRadius: 14, overflow: "hidden", backgroundColor: "#000",
+    borderWidth: 2, borderColor: "#2A2A2A", zIndex: 20,
+    shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 8,
+  },
+  pipExpand: {
+    position: "absolute", top: 5, right: 5, width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center",
+  },
 });
