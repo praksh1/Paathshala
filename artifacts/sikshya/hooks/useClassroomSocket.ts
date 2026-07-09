@@ -55,6 +55,7 @@ interface Result {
   remotePaths: DrawPath[];
   floatingReactions: FloatingReaction[];
   material: BoardMaterial | null;
+  sessionStatus: string | null;
   sendChat: (text: string) => void;
   sendReaction: (emoji: string) => void;
   sendDrawCommit: (d: string, color: string, width: number) => void;
@@ -70,6 +71,7 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
   const [remotePaths, setRemotePaths] = useState<DrawPath[]>([]);
   const [floatingReactions, setFloatingReactions] = useState<FloatingReaction[]>([]);
   const [material, setMaterial] = useState<BoardMaterial | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<string | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,6 +155,9 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
         case "material_clear":
           setMaterial(null);
           break;
+        case "session_status":
+          setSessionStatus(msg.status as string);
+          break;
       }
     };
 
@@ -228,6 +233,7 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
     remotePaths,
     floatingReactions,
     material,
+    sessionStatus,
     sendChat,
     sendReaction,
     sendDrawCommit,

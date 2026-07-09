@@ -1,0 +1,19 @@
+The app has several critical synchronization and UI bugs. To prevent token burnout, please fix these issues in strict, isolated phases. Do not move to the next phase until the current one is complete and working.
+
+PHASE 1: Database Sync & Ghost Sessions (State Management)
+1. Fix Teacher/Student Sync: Students cannot see the teacher's live session. Check the database queries and WebSocket room logic. Ensure the Student dashboard queries the exact same `sessionId` or `teacherId` that the Teacher is broadcasting to.
+2. Fix "Ghost" Sessions: The student's tab shows an active session even after ending it, and the Sessions tab shows "Live" sessions that are not happening. Ensure that when a teacher clicks "End Session", the database flag (e.g., `isLive`) is strictly set to `false`, and the client-side state is completely cleared on unmount.
+
+PHASE 2: Student Discovery UI
+1. Update the Student's view of the Teacher Profile: Add a query to fetch and display a list of the teacher's "Upcoming Classes/Sessions".
+2. Add a clear "Subscribe to Teacher" button on the teacher's profile page that links to the mock payment/subscription flow.
+
+PHASE 3: Forms & Mobile Keyboard Fix
+1. Fix Date/Time Picker: On the session creation form, change the manual text inputs to a single native HTML5 input: `<input type="datetime-local" step="300">`. This natively opens a calendar and restricts time selection to 5-minute intervals without using heavy external libraries.
+2. Fix Mobile Chat Keyboard: On the `classroom/[id]` chat input, the mobile on-screen keyboard is not triggering. Ensure the chat input is a standard `<input type="text">` or `<textarea>`. Remove any CSS like `user-select: none` or `pointer-events: none` on the input container, and ensure it does not have `autoFocus={true}` which can glitch mobile browsers.
+
+PHASE 4: Blackboard Material Uploads
+1. The previous blackboard upload feature is missing from the active call view. Inside the classroom UI, permanently dock an "Upload File" button (`<input type="file" accept="image/*,.pdf">`) next to the blackboard tools. 
+2. Ensure that when a teacher selects a file, it renders as the background image of the shared blackboard canvas so the teacher can draw directly over the imported material, mimicking Adobe Connect.
+
+Please start with Phase 1. Review the database queries handling `isLive` status and session IDs, apply the fixes, and let me know when Phase 1 is ready to test.

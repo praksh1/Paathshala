@@ -43,7 +43,7 @@ export default function StudentClassroom() {
 
   const studentName = student.name ?? "Student";
 
-  const { connected, presenceCount, messages, remotePaths, floatingReactions, material, sendChat, sendReaction } =
+  const { connected, presenceCount, messages, remotePaths, floatingReactions, material, sessionStatus, sendChat, sendReaction } =
     useClassroomSocket({ sessionId: id ?? "", name: studentName, role: "student" });
 
   useMediaPermissions();
@@ -68,6 +68,18 @@ export default function StudentClassroom() {
   const loadSession = async () => {
     try { setSession(await apiGet<SessionData>(`/sessions/${id}`)); } catch {}
   };
+
+  useEffect(() => {
+    if (sessionStatus === "completed" || sessionStatus === "cancelled") {
+      const msg = "The teacher has ended this session.";
+      if (Platform.OS === "web") {
+        window.alert(`Session Ended\n\n${msg}`);
+        router.back();
+      } else {
+        Alert.alert("Session Ended", msg, [{ text: "OK", onPress: () => router.back() }]);
+      }
+    }
+  }, [sessionStatus]);
 
   const fmt = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;

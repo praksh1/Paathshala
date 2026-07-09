@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { db, sessionsTable, sessionEnrollmentsTable, teacherProfilesTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
+import { broadcastSessionStatus } from "../ws/classroomHub";
 
 const router: IRouter = Router();
 
@@ -120,6 +121,11 @@ router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
   }
 
   const [session] = await db.update(sessionsTable).set(updates).where(eq(sessionsTable.id, id)).returning();
+
+  if (status !== undefined) {
+    broadcastSessionStatus(String(id), status);
+  }
+
   res.json(session);
 });
 

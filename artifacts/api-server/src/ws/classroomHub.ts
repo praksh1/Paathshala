@@ -23,6 +23,10 @@ function broadcast(sessionId: string, msg: object, excludeWs?: WebSocket): void 
   }
 }
 
+export function broadcastSessionStatus(sessionId: string, status: string): void {
+  broadcast(String(sessionId), { type: "session_status", status });
+}
+
 export function attachClassroomHub(server: http.Server): void {
   const wss = new WebSocketServer({ noServer: true });
 
