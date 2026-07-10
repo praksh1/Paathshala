@@ -7,8 +7,8 @@ export type MediaPermissionState = "idle" | "requesting" | "granted" | "denied";
  * Proactively requests microphone + camera access as soon as a classroom is joined,
  * using the native browser getUserMedia API (no extra libraries). This forces the
  * browser permission prompt to appear immediately instead of silently failing inside
- * the embedded Jitsi iframe. The stream is stopped right away so the camera/mic are
- * free for the Jitsi embed to use.
+ * the embedded Daily.co call. The stream is stopped right away so the camera/mic are
+ * free for the Daily.co embed to use.
  */
 export function useMediaPermissions(): MediaPermissionState {
   const [state, setState] = useState<MediaPermissionState>("idle");

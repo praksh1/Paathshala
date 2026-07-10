@@ -22,7 +22,8 @@ import type { Student } from "@/context/AuthContext";
 import { apiGet } from "@/utils/api";
 import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
 import { useMediaPermissions } from "@/hooks/useMediaPermissions";
-import JitsiEmbed from "@/components/JitsiEmbed";
+import DailyEmbed from "@/components/DailyEmbed";
+import { getDailyRoomUrl } from "@/utils/daily";
 import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -149,7 +150,13 @@ export default function StudentClassroom() {
     }
   };
 
-  const roomName = `SikshyaSession${String(id ?? "").replace(/[^a-zA-Z0-9]/g, "")}`;
+  const roomUrl = getDailyRoomUrl(String(id ?? ""));
+
+  const notifyTeacherLeft = () => {
+    const msg = "The teacher has disconnected. They may rejoin shortly — you can wait here or leave the session.";
+    if (Platform.OS === "web") window.alert(`Teacher Disconnected\n\n${msg}`);
+    else Alert.alert("Teacher Disconnected", msg);
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0A0A0A" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -212,7 +219,13 @@ export default function StudentClassroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          <JitsiEmbed roomName={roomName} displayName={studentName} style={StyleSheet.absoluteFill} />
+          <DailyEmbed
+            roomUrl={roomUrl}
+            displayName={studentName}
+            style={StyleSheet.absoluteFill}
+            watchUserName={session?.teacherName}
+            onWatchedParticipantLeft={notifyTeacherLeft}
+          />
           <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
             <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
           </TouchableOpacity>

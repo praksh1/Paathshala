@@ -89,6 +89,18 @@ router.post("/sessions", requireAuth, async (req, res): Promise<void> => {
   res.status(201).json(session);
 });
 
+const DEFAULT_SUBJECTS = [
+  "Mathematics", "Physics", "Chemistry", "Biology", "English",
+  "Nepali", "Computer Science", "Economics", "Accountancy", "Social Studies",
+];
+
+router.get("/sessions/subjects", async (_req, res): Promise<void> => {
+  const rows = await db.selectDistinct({ subject: sessionsTable.subject }).from(sessionsTable);
+  const dbSubjects = rows.map((r) => r.subject).filter((s): s is string => !!s && s.trim().length > 0);
+  const merged = Array.from(new Set([...DEFAULT_SUBJECTS, ...dbSubjects]));
+  res.json({ subjects: merged });
+});
+
 router.get("/sessions/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);

@@ -27,7 +27,8 @@ import type { Teacher } from "@/context/AuthContext";
 import { apiGet, apiPatch } from "@/utils/api";
 import { useClassroomSocket, type DrawPath, type DrawTool } from "@/hooks/useClassroomSocket";
 import { useMediaPermissions } from "@/hooks/useMediaPermissions";
-import JitsiEmbed from "@/components/JitsiEmbed";
+import DailyEmbed from "@/components/DailyEmbed";
+import { getDailyRoomUrl } from "@/utils/daily";
 import * as DocumentPicker from "expo-document-picker";
 import { Image } from "react-native";
 
@@ -414,7 +415,7 @@ export default function Classroom() {
 
   const participantCount = presenceCount > 0 ? presenceCount : (session?.enrolledCount ?? 0);
 
-  const roomName = `SikshyaSession${String(id ?? "").replace(/[^a-zA-Z0-9]/g, "")}`;
+  const roomUrl = getDailyRoomUrl(String(id ?? ""));
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0A0A0A" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -485,7 +486,7 @@ export default function Classroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          <JitsiEmbed roomName={roomName} displayName={teacherName} style={StyleSheet.absoluteFill} />
+          <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} />
           <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
             <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
           </TouchableOpacity>

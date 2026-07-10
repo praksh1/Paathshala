@@ -15,13 +15,14 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
-import { apiPost, apiPatch } from "@/utils/api";
+import { apiPost, apiPatch, apiGet } from "@/utils/api";
 import { useColors } from "@/hooks/useColors";
 import { useNotifications } from "@/context/NotificationContext";
 import { scheduleSessionReminder } from "@/utils/notifications";
 import type { Teacher } from "@/context/AuthContext";
 
-const SUBJECTS = ["Mathematics", "Science", "English", "Nepali", "Computer Science", "History", "Geography", "Economics"];
+const FALLBACK_SUBJECTS = ["Mathematics", "Science", "English", "Nepali", "Computer Science", "History", "Geography", "Economics"];
+const CUSTOM_SUBJECT_OPTION = "Create your own";
 const DURATIONS = [30, 45, 60];
 const MAX_STUDENTS_OPTIONS = [5, 10, 15, 20];
 
@@ -31,7 +32,10 @@ export default function SessionCreate() {
   const insets = useSafeAreaInsets();
   const teacher = user as Teacher;
 
+  const [subjects, setSubjects] = useState<string[]>(FALLBACK_SUBJECTS);
   const [subject, setSubject] = useState(teacher?.subject ?? "Mathematics");
+  const [customSubject, setCustomSubject] = useState("");
+  const [isCustomSubject, setIsCustomSubject] = useState(false);
   const [topic, setTopic] = useState("");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState(60);
@@ -42,7 +46,23 @@ export default function SessionCreate() {
   const [saving, setSaving] = useState(false);
   const { refresh: refreshNotifs } = useNotifications();
 
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiGet<{ subjects: string[] }>("/sessions/subjects");
+        if (res.subjects?.length) setSubjects(res.subjects);
+      } catch {}
+    })();
+  }, []);
+
+  const effectiveSubject = isCustomSubject ? customSubject.trim() : subject;
+
   const handleCreate = async () => {
+    if (!effectiveSubject) {
+      if (Platform.OS === "web") window.alert("Missing Info\n\nPlease enter a custom subject name.");
+      else Alert.alert("Missing Info", "Please enter a custom subject name.");
+      return;
+    }
     if (!topic.trim() || !date.trim() || !time.trim()) {
       if (Platform.OS === "web") window.alert("Missing Info\n\nPlease fill in topic, date, and time.");
       else Alert.alert("Missing Info", "Please fill in topic, date, and time.");
@@ -57,7 +77,7 @@ export default function SessionCreate() {
     setSaving(true);
     try {
       const newSession = await apiPost<{ id: number; topic: string; date: string }>("/sessions", {
-        subject,
+        subject: effectiveSubject,
         topic: topic.trim(),
         description: description.trim(),
         date: parsed.toISOString(),
@@ -92,11 +112,16 @@ export default function SessionCreate() {
       else Alert.alert("Missing Info", "Please enter a session topic to go live.");
       return;
     }
+    if (!effectiveSubject) {
+      if (Platform.OS === "web") window.alert("Missing Info\n\nPlease enter a custom subject name.");
+      else Alert.alert("Missing Info", "Please enter a custom subject name.");
+      return;
+    }
     setSaving(true);
     let createdId: number | null = null;
     try {
       const newSession = await apiPost<{ id: number; topic: string; date: string }>("/sessions", {
-        subject,
+        subject: effectiveSubject,
         topic: topic.trim(),
         description: description.trim(),
         date: new Date().toISOString(),
@@ -142,17 +167,37 @@ export default function SessionCreate() {
 
         <Section title="Subject">
           <View style={styles.chipGrid}>
-            {SUBJECTS.map((s) => (
+            {subjects.map((s) => (
               <TouchableOpacity
                 key={s}
-                style={[styles.chip, { borderColor: subject === s ? colors.primary : colors.border, backgroundColor: subject === s ? colors.primary + "12" : colors.muted }]}
-                onPress={() => setSubject(s)}
+                style={[styles.chip, { borderColor: !isCustomSubject && subject === s ? colors.primary : colors.border, backgroundColor: !isCustomSubject && subject === s ? colors.primary + "12" : colors.muted }]}
+                onPress={() => { setIsCustomSubject(false); setSubject(s); }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.chipText, { color: subject === s ? colors.primary : colors.mutedForeground }]}>{s}</Text>
+                <Text style={[styles.chipText, { color: !isCustomSubject && subject === s ? colors.primary : colors.mutedForeground }]}>{s}</Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.chip, { flexDirection: "row", alignItems: "center", borderColor: isCustomSubject ? colors.primary : colors.border, backgroundColor: isCustomSubject ? colors.primary + "12" : colors.muted }]}
+              onPress={() => setIsCustomSubject(true)}
+              activeOpacity={0.7}
+            >
+              <Feather name="plus" size={12} color={isCustomSubject ? colors.primary : colors.mutedForeground} style={{ marginRight: 4 }} />
+              <Text style={[styles.chipText, { color: isCustomSubject ? colors.primary : colors.mutedForeground }]}>{CUSTOM_SUBJECT_OPTION}</Text>
+            </TouchableOpacity>
           </View>
+          {isCustomSubject && (
+            <View style={[styles.inputWrap, { backgroundColor: colors.muted, borderColor: colors.border, marginTop: 4 }]}>
+              <TextInput
+                style={[styles.input, { color: colors.foreground }]}
+                placeholder="e.g. Music Theory"
+                placeholderTextColor={colors.mutedForeground}
+                value={customSubject}
+                onChangeText={setCustomSubject}
+                autoFocus
+              />
+            </View>
+          )}
         </Section>
 
         <Section title="Session Topic *">
