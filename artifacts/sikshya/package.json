@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "expo-document-picker": "^56.0.4",
+    "expo-file-system": "^19.0.23",
     "expo-notifications": "^56.0.16",
     "expo-screen-orientation": "^56.0.5",
     "react-native-webview": "^13.16.1"

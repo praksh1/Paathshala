@@ -8,3 +8,4 @@
 - [Expo mobile artifact web publish](expo-mobile-web-publish.md) — default mobile-kind build/serve targets Expo Go landing page, not a browser site; swap to `expo export -p web` + static serve for a real testable link.
 - [Lazy ghost-session expiry](lazy-ghost-session-expiry.md) — seed/bot "live" sessions never flip to completed on their own; expire stale ones on read instead of a cron job.
 - [Free follow vs paid subscription](free-follow-vs-paid-subscription.md) — keep a teacher's own paid subscription tier separate from a student's free "follow" relationship; don't overload one table for both.
+- [Drizzle group-by aggregation errors](drizzle-group-by-aggregation.md) — grouped SQL aggregates (array_agg + case + filter) can fail at runtime despite compiling; prefer JS aggregation for small per-user datasets.

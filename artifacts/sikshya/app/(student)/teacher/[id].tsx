@@ -215,21 +215,39 @@ export default function TeacherDetail() {
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
             <Feather name="arrow-left" size={22} color="#fff" />
           </TouchableOpacity>
-          {studentId && (
-            <TouchableOpacity
-              style={[
-                styles.subscribeBtn,
-                teacher.isFollowing ? styles.subscribeBtnActive : styles.subscribeBtnInactive,
-              ]}
-              onPress={toggleSubscribe}
-              disabled={subscribing}
-              activeOpacity={0.8}
-              testID="subscribe-follow-btn"
-            >
-              <Feather name={teacher.isFollowing ? "check" : "plus"} size={14} color="#fff" />
-              <Text style={styles.subscribeBtnText}>{teacher.isFollowing ? "Subscribed" : "Subscribe"}</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.heroTopActions}>
+            {studentId && (
+              <TouchableOpacity
+                style={[styles.contactBtn, { backgroundColor: "rgba(255,255,255,0.18)" }]}
+                onPress={() =>
+                  router.push({
+                    pathname: "/conversation/[id]",
+                    params: { id: String((teacher as Teacher & { userId: number }).userId), name: teacher.name },
+                  })
+                }
+                activeOpacity={0.8}
+                testID="contact-teacher-btn"
+              >
+                <Feather name="message-circle" size={14} color="#fff" />
+                <Text style={styles.subscribeBtnText}>Message</Text>
+              </TouchableOpacity>
+            )}
+            {studentId && (
+              <TouchableOpacity
+                style={[
+                  styles.subscribeBtn,
+                  teacher.isFollowing ? styles.subscribeBtnActive : styles.subscribeBtnInactive,
+                ]}
+                onPress={toggleSubscribe}
+                disabled={subscribing}
+                activeOpacity={0.8}
+                testID="subscribe-follow-btn"
+              >
+                <Feather name={teacher.isFollowing ? "check" : "plus"} size={14} color="#fff" />
+                <Text style={styles.subscribeBtnText}>{teacher.isFollowing ? "Subscribed" : "Subscribe"}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
         <View style={styles.heroAvatar}>
           <Text style={styles.heroAvatarText}>{initials}</Text>
@@ -464,6 +482,8 @@ const styles = StyleSheet.create({
   hero: { paddingHorizontal: 20, paddingBottom: 28, alignItems: "center", gap: 10 },
   heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: 4 },
   backBtn: { alignSelf: "flex-start" },
+  heroTopActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  contactBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   subscribeBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   subscribeBtnInactive: { backgroundColor: "rgba(255,255,255,0.18)" },
   subscribeBtnActive: { backgroundColor: "#22C55E60" },

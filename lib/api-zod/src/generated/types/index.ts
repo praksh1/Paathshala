@@ -26,4 +26,6 @@ export * from './studentProfile';
 export * from './teacherDetail';
 export * from './teacherListResponse';
 export * from './teacherUpdate';
+export * from './uploadUrlRequest';
+export * from './uploadUrlResponse';
 export * from './userProfile';

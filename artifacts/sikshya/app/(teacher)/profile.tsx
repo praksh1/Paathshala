@@ -171,6 +171,17 @@ export default function TeacherProfile() {
       </View>
 
       <TouchableOpacity
+        style={[styles.supportBtn, { borderColor: colors.border, backgroundColor: colors.card }]}
+        onPress={() => router.push("/support")}
+        activeOpacity={0.7}
+        testID="customer-support-link"
+      >
+        <Feather name="help-circle" size={18} color={colors.foreground} />
+        <Text style={[styles.supportText, { color: colors.foreground }]}>Customer Support</Text>
+        <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={[styles.logoutBtn, { borderColor: colors.destructive + "40", backgroundColor: colors.destructive + "08" }]}
         onPress={handleLogout}
         activeOpacity={0.7}
@@ -216,4 +227,6 @@ const styles = StyleSheet.create({
   credTypeName: { fontSize: 14, fontFamily: "Inter_400Regular" },
   logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginHorizontal: 20, borderRadius: 16, borderWidth: 1, paddingVertical: 15 },
   logoutText: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
+  supportBtn: { flexDirection: "row", alignItems: "center", gap: 10, marginHorizontal: 20, borderRadius: 16, borderWidth: 1, paddingVertical: 15, paddingHorizontal: 16 },
+  supportText: { flex: 1, fontSize: 15, fontFamily: "Inter_500Medium" },
 });

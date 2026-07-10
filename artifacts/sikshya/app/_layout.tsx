@@ -32,7 +32,7 @@ function AuthGuard() {
     const inTeacherGroup = segments[0] === "(teacher)";
     const inStudentGroup = segments[0] === "(student)";
     const inAuthGroup = segments[0] === "(auth)";
-    const onSharedScreen = segments[0] === "notifications";
+    const onSharedScreen = segments[0] === "notifications" || segments[0] === "conversation" || segments[0] === "support";
     const inProtectedGroup = inTeacherGroup || inStudentGroup;
 
     if (!user) {
@@ -59,6 +59,20 @@ function RootLayoutNav() {
         <Stack.Screen name="(student)" />
         <Stack.Screen
           name="notifications"
+          options={{
+            animation: "slide_from_right",
+            presentation: "card",
+          }}
+        />
+        <Stack.Screen
+          name="conversation/[id]"
+          options={{
+            animation: "slide_from_right",
+            presentation: "card",
+          }}
+        />
+        <Stack.Screen
+          name="support"
           options={{
             animation: "slide_from_right",
             presentation: "card",

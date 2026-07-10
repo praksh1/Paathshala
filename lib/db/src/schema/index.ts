@@ -5,3 +5,5 @@ export * from "./sessions";
 export * from "./sessionEnrollments";
 export * from "./reviews";
 export * from "./studentTeacherSubscriptions";
+export * from "./messages";
+export * from "./disputes";
