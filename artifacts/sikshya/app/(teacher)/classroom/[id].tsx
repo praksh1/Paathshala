@@ -400,12 +400,44 @@ export default function Classroom() {
         {/* Whiteboard */}
         {mode === "whiteboard" && (
           <View style={s.whiteboardArea}>
-            {/* Permanently docked upload button — always visible above the canvas */}
+            {/* Permanently docked upload button — always visible above the canvas, above the toolbar */}
             <View style={s.uploadDock}>
-              <TouchableOpacity style={s.uploadDockBtn} onPress={handleUploadMaterial} activeOpacity={0.8}>
-                <Feather name="upload-cloud" size={16} color="#fff" />
-                <Text style={s.uploadDockBtnText}>Upload Material (Image/PDF)</Text>
-              </TouchableOpacity>
+              {Platform.OS === "web" ? (
+                <View style={s.uploadDockBtnWrap}>
+                  <Feather name="upload-cloud" size={16} color="#fff" style={s.uploadDockIcon} pointerEvents="none" />
+                  <Text style={s.uploadDockBtnText} pointerEvents="none">Upload Material (Image/PDF)</Text>
+                  {React.createElement("input", {
+                    type: "file",
+                    accept: "image/*,.pdf",
+                    onChange: (e: any) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const dataUrl = reader.result as string;
+                        const kind = file.type === "application/pdf" ? "pdf" : "image";
+                        sendMaterial(dataUrl, kind);
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = "";
+                    },
+                    style: {
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      opacity: 0,
+                      cursor: "pointer",
+                      zIndex: 9999,
+                    },
+                  })}
+                </View>
+              ) : (
+                <TouchableOpacity style={s.uploadDockBtnWrap} onPress={handleUploadMaterial} activeOpacity={0.8}>
+                  <Feather name="upload-cloud" size={16} color="#fff" style={s.uploadDockIcon} />
+                  <Text style={s.uploadDockBtnText}>Upload Material (Image/PDF)</Text>
+                </TouchableOpacity>
+              )}
               {material && (
                 <TouchableOpacity style={s.uploadDockClear} onPress={clearMaterial} activeOpacity={0.7}>
                   <Feather name="x-circle" size={18} color="#EF4444" />
@@ -633,11 +665,10 @@ const s = StyleSheet.create({
   toolDivider: { width: 1, height: 26, backgroundColor: "#333", marginHorizontal: 2 },
   sizeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#333" },
   toolIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
-  uploadBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 17, backgroundColor: "#2A2A2A", paddingHorizontal: 12, height: 34 },
-  uploadBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
-  uploadDock: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 4 },
-  uploadDockBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, backgroundColor: "#C41E3A", paddingVertical: 12, shadowColor: "#C41E3A", shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
-  uploadDockBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff" },
+  uploadDock: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 4, zIndex: 50, position: "relative" },
+  uploadDockBtnWrap: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, backgroundColor: "#C41E3A", paddingVertical: 14, shadowColor: "#C41E3A", shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6, position: "relative", overflow: "hidden", zIndex: 50, borderWidth: 1, borderColor: "#FF6B81" },
+  uploadDockIcon: { zIndex: 51 },
+  uploadDockBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", zIndex: 51 },
   uploadDockClear: { width: 40, height: 40, borderRadius: 12, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
   toolSelector: { flexDirection: "row", paddingHorizontal: 12, paddingBottom: 6, gap: 6 },
   toolSelectorBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: 10, backgroundColor: "#1A1A1A", paddingVertical: 8 },
