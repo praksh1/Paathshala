@@ -162,6 +162,34 @@ router.patch("/teachers/:id", requireAuth, async (req, res): Promise<void> => {
   res.json({ ...profile, name: user?.name ?? "", email: user?.email ?? "" });
 });
 
+// Phase 3 sandbox bypass: local mock eSewa/Khalti payment flow has no real gateway to
+// confirm against, so this endpoint marks the subscription active as soon as the client
+// simulates a successful charge. No external payment API is called.
+router.post("/teachers/:id/subscribe", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid teacher ID" }); return; }
+
+  const [existing] = await db.select({ userId: teacherProfilesTable.userId })
+    .from(teacherProfilesTable).where(eq(teacherProfilesTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Teacher not found" }); return; }
+  if (!req.user || req.user.userId !== existing.userId) {
+    res.status(403).json({ error: "Not authorized to update this teacher's subscription" });
+    return;
+  }
+
+  const [profile] = await db
+    .update(teacherProfilesTable)
+    .set({ subscriptionActive: true, approvalStatus: "approved" })
+    .where(eq(teacherProfilesTable.id, id))
+    .returning();
+
+  const [user] = await db.select({ name: usersTable.name, email: usersTable.email })
+    .from(usersTable).where(eq(usersTable.id, profile.userId));
+
+  res.json({ ...profile, name: user?.name ?? "", email: user?.email ?? "" });
+});
+
 router.get("/teachers/:id/reviews", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);

@@ -11,6 +11,7 @@ import { useNotifications } from "@/context/NotificationContext";
 import { addInAppNotification } from "@/utils/notifications";
 import PaymentSheet, { type PaymentMethod } from "@/components/PaymentSheet";
 import type { Teacher } from "@/context/AuthContext";
+import { apiPost } from "@/utils/api";
 
 const PAYMENT_HISTORY = [
   { id: "p1", amount: 2000, date: "May 2025", method: "eSewa", status: "paid" },
@@ -19,7 +20,7 @@ const PAYMENT_HISTORY = [
 ];
 
 export default function Subscription() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const teacher = user as Teacher;
@@ -44,6 +45,17 @@ export default function Subscription() {
 
   const handlePaymentSuccess = async (method: PaymentMethod) => {
     setPayVisible(false);
+
+    // Phase 3 sandbox bypass: the local mock eSewa/Khalti UI already simulated the
+    // charge (no OTP, no real gateway). We persist the result server-side here instead
+    // of redirecting to any external SDK.
+    if (teacher?.id) {
+      try {
+        await apiPost(`/teachers/${teacher.id}/subscribe`, {});
+      } catch (_e) {}
+    }
+    await updateUser({ subscriptionActive: true, approvalStatus: "approved" });
+
     await addInAppNotification({
       title: "Subscription Payment Confirmed",
       body: `NPR 2,000 paid via ${method === "esewa" ? "eSewa" : "Khalti"}. Your Sikshya Pro plan is active for July 2025.`,
@@ -52,6 +64,8 @@ export default function Subscription() {
     await refreshNotifs();
     if (Platform.OS === "web") window.alert("Payment Successful!\n\nYour Sikshya Pro subscription is now active. Happy teaching!");
     else Alert.alert("Payment Successful!", "Your Sikshya Pro subscription is now active. Happy teaching!");
+
+    router.replace("/(teacher)");
   };
 
   return (
