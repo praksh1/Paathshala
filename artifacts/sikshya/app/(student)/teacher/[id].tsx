@@ -7,11 +7,11 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "rea
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
-import { apiGet, apiPost } from "@/utils/api";
+import { apiGet, apiPost, apiDelete } from "@/utils/api";
 import StarRating from "@/components/StarRating";
 import SessionCard from "@/components/SessionCard";
 import PaymentSheet, { type PaymentMethod } from "@/components/PaymentSheet";
-import type { Teacher } from "@/context/AuthContext";
+import type { Teacher, Student } from "@/context/AuthContext";
 
 interface Session {
   id: string;
@@ -35,18 +35,59 @@ interface ApiReview {
   createdAt: string;
 }
 
+interface ApiSession {
+  id: number;
+  teacherName: string;
+  subject: string;
+  topic: string;
+  date: string;
+  duration: number;
+  maxStudents: number;
+  enrolledCount: number;
+  price: number;
+  status: string;
+}
+
+function mapApiSession(s: ApiSession, teacherId: string): Session {
+  return {
+    id: String(s.id),
+    teacherId,
+    teacherName: s.teacherName,
+    subject: s.subject,
+    topic: s.topic,
+    date: s.date,
+    duration: s.duration,
+    maxStudents: s.maxStudents,
+    enrolledStudents: Array(s.enrolledCount).fill(""),
+    price: s.price,
+    status: s.status as Session["status"],
+  };
+}
+
+type SessionTab = "upcoming" | "live" | "past";
+
 export default function TeacherDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [teacher, setTeacher] = useState<Teacher | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [teacher, setTeacher] = useState<(Teacher & { isFollowing?: boolean }) | null>(null);
+  const [upcomingSessions, setUpcomingSessions] = useState<Session[]>([]);
+  const [liveSessions, setLiveSessions] = useState<Session[]>([]);
+  const [pastSessions, setPastSessions] = useState<Session[]>([]);
+  const [sessionTab, setSessionTab] = useState<SessionTab>("upcoming");
   const [reviews, setReviews] = useState<ApiReview[]>([]);
   const [myRating, setMyRating] = useState(0);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
+  const [canRate, setCanRate] = useState(false);
+  const [checkingRateEligibility, setCheckingRateEligibility] = useState(true);
   const [bookingSessionId, setBookingSessionId] = useState<string | null>(null);
   const [paySession, setPaySession] = useState<Session | null>(null);
+  const [subscribing, setSubscribing] = useState(false);
+  const [subjectsExpanded, setSubjectsExpanded] = useState(false);
+  const [sessionsHostedExpanded, setSessionsHostedExpanded] = useState(false);
+
+  const studentId = user?.role === "student" ? (user as Student).id : undefined;
 
   useEffect(() => {
     loadData();
@@ -54,32 +95,37 @@ export default function TeacherDetail() {
 
   const loadData = async () => {
     try {
-      const apiTeacher = await apiGet<Teacher & { userId: number }>(`/teachers/${id}`);
+      const query = studentId ? `?studentId=${studentId}` : "";
+      const apiTeacher = await apiGet<Teacher & { userId: number; isFollowing?: boolean }>(`/teachers/${id}${query}`);
       setTeacher({ ...apiTeacher, id: String(apiTeacher.id), credentials: [] });
 
-      const [sessRes, revRes] = await Promise.all([
-        apiGet<{ sessions: { id: number; teacherName: string; subject: string; topic: string; date: string; duration: number; maxStudents: number; enrolledCount: number; price: number; status: string }[] }>(
-          `/sessions?teacherId=${apiTeacher.userId}&status=upcoming`
-        ),
+      const [upcomingRes, liveRes, pastRes, revRes] = await Promise.all([
+        apiGet<{ sessions: ApiSession[] }>(`/sessions?teacherId=${apiTeacher.userId}&status=upcoming`),
+        apiGet<{ sessions: ApiSession[] }>(`/sessions?teacherId=${apiTeacher.userId}&status=live`),
+        apiGet<{ sessions: ApiSession[] }>(`/sessions?teacherId=${apiTeacher.userId}&status=completed`),
         apiGet<{ reviews: ApiReview[] }>(`/teachers/${id}/reviews?limit=10`),
       ]);
 
-      setSessions(sessRes.sessions.map((s) => ({
-        id: String(s.id),
-        teacherId: String(apiTeacher.id),
-        teacherName: s.teacherName,
-        subject: s.subject,
-        topic: s.topic,
-        date: s.date,
-        duration: s.duration,
-        maxStudents: s.maxStudents,
-        enrolledStudents: Array(s.enrolledCount).fill(""),
-        price: s.price,
-        status: s.status as Session["status"],
-      })));
-
+      setUpcomingSessions(upcomingRes.sessions.map((s) => mapApiSession(s, String(apiTeacher.id))));
+      setLiveSessions(liveRes.sessions.map((s) => mapApiSession(s, String(apiTeacher.id))));
+      setPastSessions(pastRes.sessions.map((s) => mapApiSession(s, String(apiTeacher.id))));
       setReviews(revRes.reviews);
+
+      if (liveRes.sessions.length > 0) setSessionTab("live");
     } catch (_e) {}
+
+    if (studentId) {
+      try {
+        const rateRes = await apiGet<{ canRate: boolean }>(`/reviews/can-rate?teacherId=${id}`);
+        setCanRate(rateRes.canRate);
+      } catch (_e) {
+        setCanRate(false);
+      } finally {
+        setCheckingRateEligibility(false);
+      }
+    } else {
+      setCheckingRateEligibility(false);
+    }
   };
 
   const bookSession = (session: Session) => {
@@ -107,8 +153,14 @@ export default function TeacherDetail() {
     }
   };
 
+  const openLiveSession = (session: Session) => {
+    // Only genuinely active classes are routable; anything else is a no-op tap.
+    if (session.status !== "live") return;
+    router.push(`/(student)/classroom/${session.id}`);
+  };
+
   const submitRating = async () => {
-    if (myRating === 0 || !teacher) return;
+    if (myRating === 0 || !teacher || !canRate) return;
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       await apiPost("/reviews", {
@@ -116,14 +168,41 @@ export default function TeacherDetail() {
         rating: myRating,
         comment: `Great teacher! Rated ${myRating} star${myRating !== 1 ? "s" : ""}.`,
       });
-    } catch (_e) {}
-    setRatingSubmitted(true);
-    Alert.alert("Thank you!", `You rated ${teacher.name} ${myRating} star${myRating !== 1 ? "s" : ""}.`);
+      setRatingSubmitted(true);
+      Alert.alert("Thank you!", `You rated ${teacher.name} ${myRating} star${myRating !== 1 ? "s" : ""}.`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "You can only rate teachers after attending a completed session.";
+      Alert.alert("Can't Submit Rating", msg);
+    }
+  };
+
+  const toggleSubscribe = async () => {
+    if (!teacher || subscribing) return;
+    setSubscribing(true);
+    const nowFollowing = !teacher.isFollowing;
+    try {
+      if (nowFollowing) {
+        await apiPost(`/teachers/${teacher.id}/follow`, {});
+      } else {
+        await apiDelete(`/teachers/${teacher.id}/follow`);
+      }
+      setTeacher({ ...teacher, isFollowing: nowFollowing });
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (_e) {
+      Alert.alert("Something went wrong", "Please try again.");
+    } finally {
+      setSubscribing(false);
+    }
   };
 
   if (!teacher) return null;
 
   const initials = teacher.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+
+  const activeSessions = sessionTab === "upcoming" ? upcomingSessions : sessionTab === "live" ? liveSessions : pastSessions;
+  const visibleSubjects = subjectsExpanded ? teacher.subjects : teacher.subjects.slice(0, 4);
+  const hasMoreSubjects = teacher.subjects.length > 4;
+  const totalHosted = upcomingSessions.length + liveSessions.length + pastSessions.length;
 
   return (
     <ScrollView
@@ -132,9 +211,26 @@ export default function TeacherDetail() {
       showsVerticalScrollIndicator={false}
     >
       <LinearGradient colors={["#1A365D", "#2D4A7A"]} style={[styles.hero, { paddingTop: insets.top + 16 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
-          <Feather name="arrow-left" size={22} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.heroTopRow}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} activeOpacity={0.7}>
+            <Feather name="arrow-left" size={22} color="#fff" />
+          </TouchableOpacity>
+          {studentId && (
+            <TouchableOpacity
+              style={[
+                styles.subscribeBtn,
+                teacher.isFollowing ? styles.subscribeBtnActive : styles.subscribeBtnInactive,
+              ]}
+              onPress={toggleSubscribe}
+              disabled={subscribing}
+              activeOpacity={0.8}
+              testID="subscribe-follow-btn"
+            >
+              <Feather name={teacher.isFollowing ? "check" : "plus"} size={14} color="#fff" />
+              <Text style={styles.subscribeBtnText}>{teacher.isFollowing ? "Subscribed" : "Subscribe"}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <View style={styles.heroAvatar}>
           <Text style={styles.heroAvatarText}>{initials}</Text>
         </View>
@@ -168,19 +264,86 @@ export default function TeacherDetail() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>About</Text>
           <Text style={[styles.bio, { color: colors.mutedForeground }]}>{teacher.bio}</Text>
+
+          <View style={styles.expandableHeader}>
+            <Text style={[styles.expandableLabel, { color: colors.foreground }]}>
+              Subjects Taught ({teacher.subjects.length})
+            </Text>
+            {hasMoreSubjects && (
+              <TouchableOpacity onPress={() => setSubjectsExpanded((v) => !v)} activeOpacity={0.7}>
+                <Text style={[styles.expandToggle, { color: colors.primary }]}>
+                  {subjectsExpanded ? "Show less" : "Show all"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <View style={styles.tagRow}>
-            {teacher.subjects.map((s) => (
+            {visibleSubjects.map((s) => (
               <View key={s} style={[styles.tag, { backgroundColor: colors.secondary + "12" }]}>
                 <Text style={[styles.tagText, { color: colors.secondary }]}>{s}</Text>
               </View>
             ))}
           </View>
+
+          <TouchableOpacity
+            style={styles.expandableHeader}
+            onPress={() => setSessionsHostedExpanded((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.expandableLabel, { color: colors.foreground }]}>
+              Sessions Hosted ({totalHosted})
+            </Text>
+            <Feather name={sessionsHostedExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+          </TouchableOpacity>
+          {sessionsHostedExpanded && (
+            <View style={styles.hostedBreakdown}>
+              <Text style={[styles.hostedRow, { color: colors.mutedForeground }]}>Upcoming: {upcomingSessions.length}</Text>
+              <Text style={[styles.hostedRow, { color: colors.mutedForeground }]}>Live now: {liveSessions.length}</Text>
+              <Text style={[styles.hostedRow, { color: colors.mutedForeground }]}>Completed: {pastSessions.length}</Text>
+            </View>
+          )}
         </View>
 
-        {sessions.length > 0 && (
-          <View>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Available Sessions</Text>
-            {sessions.map((s) => (
+        <View>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Sessions</Text>
+          <View style={styles.tabRow}>
+            {([
+              { key: "upcoming", label: "Upcoming" },
+              { key: "live", label: `Live${liveSessions.length > 0 ? ` (${liveSessions.length})` : ""}` },
+              { key: "past", label: "Past" },
+            ] as { key: SessionTab; label: string }[]).map((t) => {
+              const active = sessionTab === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[
+                    styles.tabBtn,
+                    { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary + "12" : colors.muted },
+                  ]}
+                  onPress={() => setSessionTab(t.key)}
+                  activeOpacity={0.7}
+                  testID={`session-tab-${t.key}`}
+                >
+                  {t.key === "live" && liveSessions.length > 0 && <View style={styles.liveDot} />}
+                  <Text style={[styles.tabBtnText, { color: active ? colors.primary : colors.mutedForeground }]}>{t.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {activeSessions.length === 0 && (
+            <View style={[styles.noSessions, { backgroundColor: colors.muted }]}>
+              <Feather name="calendar" size={24} color={colors.mutedForeground} />
+              <Text style={[styles.noSessionsText, { color: colors.mutedForeground }]}>
+                {sessionTab === "upcoming" && "No upcoming sessions. Check back soon."}
+                {sessionTab === "live" && "No active class right now."}
+                {sessionTab === "past" && "No past sessions yet."}
+              </Text>
+            </View>
+          )}
+
+          {sessionTab === "upcoming" &&
+            activeSessions.map((s) => (
               <TouchableOpacity
                 key={s.id}
                 onPress={() => bookSession(s)}
@@ -188,7 +351,7 @@ export default function TeacherDetail() {
                 disabled={bookingSessionId === s.id}
               >
                 <SessionCard session={s} onPress={() => bookSession(s)} />
-                <View style={[styles.bookBtnRow]}>
+                <View style={styles.bookBtnRow}>
                   <TouchableOpacity
                     style={[styles.bookBtn, { backgroundColor: colors.primary }, bookingSessionId === s.id && { opacity: 0.6 }]}
                     onPress={() => bookSession(s)}
@@ -203,43 +366,58 @@ export default function TeacherDetail() {
                 </View>
               </TouchableOpacity>
             ))}
-          </View>
-        )}
 
-        {sessions.length === 0 && (
-          <View style={[styles.noSessions, { backgroundColor: colors.muted }]}>
-            <Feather name="calendar" size={24} color={colors.mutedForeground} />
-            <Text style={[styles.noSessionsText, { color: colors.mutedForeground }]}>
-              No upcoming sessions. Check back soon.
-            </Text>
-          </View>
-        )}
+          {sessionTab === "live" &&
+            activeSessions.map((s) => (
+              <TouchableOpacity key={s.id} onPress={() => openLiveSession(s)} activeOpacity={0.85}>
+                <SessionCard session={s} onPress={() => openLiveSession(s)} />
+                <View style={styles.bookBtnRow}>
+                  <View style={[styles.bookBtn, { backgroundColor: colors.destructive }]}>
+                    <View style={styles.liveDotWhite} />
+                    <Text style={styles.bookBtnText}>Join Live Class</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
 
-        {!ratingSubmitted ? (
-          <View style={[styles.rateCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Rate this Teacher</Text>
-            <Text style={[styles.rateSubtitle, { color: colors.mutedForeground }]}>
-              Your feedback helps other students choose the right teacher
-            </Text>
-            <View style={styles.starRow}>
-              <StarRating rating={myRating} size={36} interactive onRate={(r) => setMyRating(r)} />
-            </View>
-            <TouchableOpacity
-              style={[styles.submitBtn, { backgroundColor: myRating > 0 ? colors.secondary : colors.muted }]}
-              onPress={submitRating}
-              disabled={myRating === 0}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.submitBtnText, { color: myRating > 0 ? "#fff" : colors.mutedForeground }]}>
-                Submit Rating
+          {sessionTab === "past" &&
+            activeSessions.map((s) => <SessionCard key={s.id} session={s} onPress={() => {}} />)}
+        </View>
+
+        {studentId && (
+          !checkingRateEligibility && !ratingSubmitted && canRate ? (
+            <View style={[styles.rateCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.foreground }]}>Rate this Teacher</Text>
+              <Text style={[styles.rateSubtitle, { color: colors.mutedForeground }]}>
+                Your feedback helps other students choose the right teacher
               </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={[styles.ratingThanks, { backgroundColor: colors.success + "12", borderColor: colors.success + "30" }]}>
-            <Feather name="check-circle" size={20} color={colors.success} />
-            <Text style={[styles.ratingThanksText, { color: colors.success }]}>Rating submitted! Thank you.</Text>
-          </View>
+              <View style={styles.starRow}>
+                <StarRating rating={myRating} size={36} interactive onRate={(r) => setMyRating(r)} />
+              </View>
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: myRating > 0 ? colors.secondary : colors.muted }]}
+                onPress={submitRating}
+                disabled={myRating === 0}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.submitBtnText, { color: myRating > 0 ? "#fff" : colors.mutedForeground }]}>
+                  Submit Rating
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : ratingSubmitted ? (
+            <View style={[styles.ratingThanks, { backgroundColor: colors.success + "12", borderColor: colors.success + "30" }]}>
+              <Feather name="check-circle" size={20} color={colors.success} />
+              <Text style={[styles.ratingThanksText, { color: colors.success }]}>Rating submitted! Thank you.</Text>
+            </View>
+          ) : !checkingRateEligibility ? (
+            <View style={[styles.rateLocked, { backgroundColor: colors.muted }]}>
+              <Feather name="lock" size={16} color={colors.mutedForeground} />
+              <Text style={[styles.noSessionsText, { color: colors.mutedForeground }]}>
+                You can rate this teacher after attending a completed session with them (within the last 15 days).
+              </Text>
+            </View>
+          ) : null
         )}
 
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Student Reviews</Text>
@@ -284,7 +462,12 @@ export default function TeacherDetail() {
 const styles = StyleSheet.create({
   container: {},
   hero: { paddingHorizontal: 20, paddingBottom: 28, alignItems: "center", gap: 10 },
-  backBtn: { alignSelf: "flex-start", marginBottom: 8 },
+  heroTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%", marginBottom: 4 },
+  backBtn: { alignSelf: "flex-start" },
+  subscribeBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
+  subscribeBtnInactive: { backgroundColor: "rgba(255,255,255,0.18)" },
+  subscribeBtnActive: { backgroundColor: "#22C55E60" },
+  subscribeBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
   heroAvatar: { width: 88, height: 88, borderRadius: 44, backgroundColor: "rgba(255,255,255,0.25)", justifyContent: "center", alignItems: "center" },
   heroAvatarText: { fontSize: 32, fontFamily: "Inter_700Bold", color: "#fff" },
   heroName: { fontSize: 24, fontFamily: "Inter_700Bold", color: "#fff" },
@@ -301,12 +484,23 @@ const styles = StyleSheet.create({
   card: { borderRadius: 18, borderWidth: 1, padding: 18, gap: 12 },
   cardTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   bio: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 22 },
+  expandableHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  expandableLabel: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  expandToggle: { fontSize: 13, fontFamily: "Inter_500Medium" },
+  hostedBreakdown: { gap: 4, paddingTop: 2 },
+  hostedRow: { fontSize: 13, fontFamily: "Inter_400Regular" },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: { borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
   tagText: { fontSize: 12, fontFamily: "Inter_500Medium" },
-  sectionTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold" },
+  sectionTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", marginBottom: 10 },
+  tabRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  tabBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 8 },
+  tabBtnText: { fontSize: 13, fontFamily: "Inter_600SemiBold" },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#EF4444" },
+  liveDotWhite: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#fff" },
   noSessions: { borderRadius: 14, padding: 20, flexDirection: "row", alignItems: "center", gap: 12 },
   noSessionsText: { fontSize: 14, fontFamily: "Inter_400Regular", flex: 1 },
+  rateLocked: { borderRadius: 14, padding: 16, flexDirection: "row", alignItems: "center", gap: 10 },
   bookBtnRow: { marginTop: -4, marginBottom: 8, paddingHorizontal: 2 },
   bookBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 12 },
   bookBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#fff" },

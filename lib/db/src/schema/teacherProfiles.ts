@@ -21,6 +21,8 @@ export const teacherProfilesTable = pgTable("teacher_profiles", {
   languages: text("languages").array().notNull().default([]),
   isOnline: boolean("is_online").notNull().default(false),
   subscriptionActive: boolean("subscription_active").notNull().default(false),
+  subscriptionTier: text("subscription_tier").notNull().default("base"), // base | tier1 | tier2 | tier3 | tier4
+  maxSessionsPerMonth: integer("max_sessions_per_month").notNull().default(10),
   sessionsThisMonth: integer("sessions_this_month").notNull().default(0),
   totalStudents: integer("total_students").notNull().default(0),
   monthlyEarnings: integer("monthly_earnings").notNull().default(0),

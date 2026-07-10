@@ -64,3 +64,16 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) throw new ApiError(res.status, data.error ?? "Request failed");
   return data as T;
 }
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  const token = await getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${getApiBase()}${path}`, {
+    method: "DELETE",
+    headers,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? "Request failed");
+  return data as T;
+}

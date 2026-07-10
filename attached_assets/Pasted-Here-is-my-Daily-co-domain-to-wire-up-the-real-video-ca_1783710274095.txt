@@ -1,0 +1,27 @@
+Here is my Daily.co domain to wire up the real video calls: 
+https://hometuition.daily.co
+
+Please apply this domain to the EXPO_PUBLIC_DAILY_DOMAIN environment variable/configuration so the video rooms automatically connect end-to-end. 
+
+Once the video domain is set, please proceed directly to PHASE 2: Subscription Tiers & Student-Teacher Profile Restrictions:
+
+1. Dynamic Teacher Subscription Upgrades:
+- Under the "Pay Monthly Subscription" section on the Teacher Pro Plan dashboard, add a drop-down or toggle option to allow teachers to buy additional sessions.
+- Implement this exact pricing logic in the UI and database:
+  * Base: 10 sessions/month (Max 60 mins, 20 students) = NPR 2,000
+  * Tier 1: 15 sessions (+5 sessions) = +NPR 800 (Total NPR 2,800)
+  * Tier 2: 20 sessions (+10 sessions) = +NPR 1,500 (Total NPR 3,500)
+  * Tier 3: 25 sessions (+15 sessions) = +NPR 2,200 (Total NPR 4,220)
+  * Tier 4: 30 sessions max (+20 sessions) = +NPR 2,700 (Total NPR 4,700)
+- Update the teacher's remaining session quota dynamically in the database upon upgrading.
+
+2. Enforce 15-Day Student Rating Rule & Clean Up Bot Sessions:
+- Restrict the rating system: A student can ONLY leave a star rating/feedback if they actually attended a completed session with that teacher. Block ratings entirely on the search page for random users. Allow ratings up to 15 days after the session ends, then lock it.
+- Remove any "ghost/bot-generated" live sessions from the Sessions tab. Clicking a live session must strictly route to an active class or do nothing.
+
+3. Enhance Teacher Profile Search & Free Subscriptions:
+- When a student clicks a teacher's search result profile, allow them to click "Subscribe" for FREE. Subscribing adds the teacher to their dashboard, but they only pay when enrolling in a specific session.
+- On this profile view, list the teacher's "Past", "Live", and "Upcoming" sessions cleanly.
+- If a student clicks on "Subjects Taught" or "Sessions Hosted," expand the view to list the actual names of the subjects and dates of the hosted sessions.
+
+Please execute these updates and let me know when Phase 2 is complete!

@@ -32,6 +32,31 @@ router.get("/sessions", async (req, res): Promise<void> => {
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   if (status === "live") {
+    // Ghost/bot-generated "live" sessions (e.g. from seed data) never get moved to
+    // "completed" by a real teacher action. Lazily auto-expire any "live" session whose
+    // scheduled end time (date + duration + grace) has already passed, so the Sessions
+    // tab and Live Now section only ever show genuinely active classes.
+    const staleLive = await db
+      .select({ id: sessionsTable.id, date: sessionsTable.date, duration: sessionsTable.duration })
+      .from(sessionsTable)
+      .where(eq(sessionsTable.status, "live"));
+
+    const staleIds = staleLive
+      .filter((s) => {
+        const endMs = new Date(s.date).getTime() + (s.duration + 15) * 60 * 1000;
+        return endMs < Date.now();
+      })
+      .map((s) => s.id);
+
+    if (staleIds.length > 0) {
+      await db.update(sessionsTable).set({ status: "completed" }).where(
+        sql`${sessionsTable.id} = ANY(ARRAY[${sql.join(staleIds.map((id) => sql`${id}`), sql`,`)}]::int[])`
+      );
+      for (const staleId of staleIds) {
+        broadcastSessionStatus(String(staleId), "completed");
+      }
+    }
+
     const liveSessions = await db
       .selectDistinctOn([sessionsTable.teacherId])
       .from(sessionsTable)

@@ -1,9 +1,19 @@
 import { and, asc, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
-import { db, teacherProfilesTable, usersTable } from "@workspace/db";
+import { db, studentTeacherSubscriptionsTable, teacherProfilesTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
+
+export const SUBSCRIPTION_TIERS = {
+  base: { sessions: 10, price: 2000 },
+  tier1: { sessions: 15, price: 2800 },
+  tier2: { sessions: 20, price: 3500 },
+  tier3: { sessions: 25, price: 4220 },
+  tier4: { sessions: 30, price: 4700 },
+} as const;
+
+export type SubscriptionTierKey = keyof typeof SUBSCRIPTION_TIERS;
 
 router.get("/teachers", async (req, res): Promise<void> => {
   const { search, subject, district, minRating, maxPrice, onlineOnly, sort, page = "1", limit = "20" } = req.query as Record<string, string>;
@@ -72,6 +82,8 @@ router.get("/teachers", async (req, res): Promise<void> => {
         languages: teacherProfilesTable.languages,
         isOnline: teacherProfilesTable.isOnline,
         subscriptionActive: teacherProfilesTable.subscriptionActive,
+        subscriptionTier: teacherProfilesTable.subscriptionTier,
+        maxSessionsPerMonth: teacherProfilesTable.maxSessionsPerMonth,
         sessionsThisMonth: teacherProfilesTable.sessionsThisMonth,
         totalStudents: teacherProfilesTable.totalStudents,
         monthlyEarnings: teacherProfilesTable.monthlyEarnings,
@@ -117,6 +129,8 @@ router.get("/teachers/:id", async (req, res): Promise<void> => {
       languages: teacherProfilesTable.languages,
       isOnline: teacherProfilesTable.isOnline,
       subscriptionActive: teacherProfilesTable.subscriptionActive,
+      subscriptionTier: teacherProfilesTable.subscriptionTier,
+      maxSessionsPerMonth: teacherProfilesTable.maxSessionsPerMonth,
       sessionsThisMonth: teacherProfilesTable.sessionsThisMonth,
       totalStudents: teacherProfilesTable.totalStudents,
       monthlyEarnings: teacherProfilesTable.monthlyEarnings,
@@ -129,7 +143,23 @@ router.get("/teachers/:id", async (req, res): Promise<void> => {
     .where(eq(teacherProfilesTable.id, id));
 
   if (!row) { res.status(404).json({ error: "Teacher not found" }); return; }
-  res.json(row);
+
+  let isFollowing = false;
+  const studentIdRaw = req.query.studentId as string | undefined;
+  if (studentIdRaw) {
+    const studentId = parseInt(studentIdRaw, 10);
+    if (!isNaN(studentId)) {
+      const [follow] = await db.select({ id: studentTeacherSubscriptionsTable.id })
+        .from(studentTeacherSubscriptionsTable)
+        .where(and(
+          eq(studentTeacherSubscriptionsTable.studentId, studentId),
+          eq(studentTeacherSubscriptionsTable.teacherId, row.userId),
+        ));
+      isFollowing = !!follow;
+    }
+  }
+
+  res.json({ ...row, isFollowing });
 });
 
 router.patch("/teachers/:id", requireAuth, async (req, res): Promise<void> => {
@@ -170,6 +200,10 @@ router.post("/teachers/:id/subscribe", requireAuth, async (req, res): Promise<vo
   const id = parseInt(raw, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid teacher ID" }); return; }
 
+  const { tier } = req.body as { tier?: string };
+  const tierKey: SubscriptionTierKey = tier && tier in SUBSCRIPTION_TIERS ? (tier as SubscriptionTierKey) : "base";
+  const tierInfo = SUBSCRIPTION_TIERS[tierKey];
+
   const [existing] = await db.select({ userId: teacherProfilesTable.userId })
     .from(teacherProfilesTable).where(eq(teacherProfilesTable.id, id));
   if (!existing) { res.status(404).json({ error: "Teacher not found" }); return; }
@@ -180,7 +214,12 @@ router.post("/teachers/:id/subscribe", requireAuth, async (req, res): Promise<vo
 
   const [profile] = await db
     .update(teacherProfilesTable)
-    .set({ subscriptionActive: true, approvalStatus: "approved" })
+    .set({
+      subscriptionActive: true,
+      approvalStatus: "approved",
+      subscriptionTier: tierKey,
+      maxSessionsPerMonth: tierInfo.sessions,
+    })
     .where(eq(teacherProfilesTable.id, id))
     .returning();
 
@@ -188,6 +227,80 @@ router.post("/teachers/:id/subscribe", requireAuth, async (req, res): Promise<vo
     .from(usersTable).where(eq(usersTable.id, profile.userId));
 
   res.json({ ...profile, name: user?.name ?? "", email: user?.email ?? "" });
+});
+
+router.get("/subscription-tiers", (_req, res): void => {
+  res.json({ tiers: SUBSCRIPTION_TIERS });
+});
+
+// Free "Subscribe" (follow): adds a teacher to a student's dashboard with no charge.
+// Payment only happens at session enrollment. Distinct from the teacher's own paid
+// Sikshya Pro subscription above.
+router.post("/teachers/:id/follow", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid teacher ID" }); return; }
+
+  const user = req.user!;
+  if (user.role !== "student") {
+    res.status(403).json({ error: "Only students can follow teachers" });
+    return;
+  }
+
+  const [teacher] = await db.select({ userId: teacherProfilesTable.userId })
+    .from(teacherProfilesTable).where(eq(teacherProfilesTable.id, id));
+  if (!teacher) { res.status(404).json({ error: "Teacher not found" }); return; }
+
+  await db.insert(studentTeacherSubscriptionsTable)
+    .values({ studentId: user.userId, teacherId: teacher.userId })
+    .onConflictDoNothing();
+
+  res.status(201).json({ following: true });
+});
+
+router.delete("/teachers/:id/follow", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid teacher ID" }); return; }
+
+  const user = req.user!;
+  const [teacher] = await db.select({ userId: teacherProfilesTable.userId })
+    .from(teacherProfilesTable).where(eq(teacherProfilesTable.id, id));
+  if (!teacher) { res.status(404).json({ error: "Teacher not found" }); return; }
+
+  await db.delete(studentTeacherSubscriptionsTable)
+    .where(and(
+      eq(studentTeacherSubscriptionsTable.studentId, user.userId),
+      eq(studentTeacherSubscriptionsTable.teacherId, teacher.userId),
+    ));
+
+  res.json({ following: false });
+});
+
+router.get("/students/:id/followed-teachers", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const studentId = parseInt(raw, 10);
+  if (isNaN(studentId)) { res.status(400).json({ error: "Invalid student ID" }); return; }
+
+  const teachers = await db
+    .select({
+      id: teacherProfilesTable.id,
+      userId: teacherProfilesTable.userId,
+      name: usersTable.name,
+      subject: teacherProfilesTable.subject,
+      subjects: teacherProfilesTable.subjects,
+      pricePerSession: teacherProfilesTable.pricePerSession,
+      rating: teacherProfilesTable.rating,
+      reviewCount: teacherProfilesTable.reviewCount,
+      avatarUrl: teacherProfilesTable.avatarUrl,
+      isOnline: teacherProfilesTable.isOnline,
+    })
+    .from(studentTeacherSubscriptionsTable)
+    .innerJoin(teacherProfilesTable, eq(studentTeacherSubscriptionsTable.teacherId, teacherProfilesTable.userId))
+    .innerJoin(usersTable, eq(teacherProfilesTable.userId, usersTable.id))
+    .where(eq(studentTeacherSubscriptionsTable.studentId, studentId));
+
+  res.json({ teachers });
 });
 
 router.get("/teachers/:id/reviews", async (req, res): Promise<void> => {

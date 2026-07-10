@@ -4,3 +4,4 @@ export * from "./studentProfiles";
 export * from "./sessions";
 export * from "./sessionEnrollments";
 export * from "./reviews";
+export * from "./studentTeacherSubscriptions";

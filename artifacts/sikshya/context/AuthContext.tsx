@@ -34,6 +34,8 @@ export interface Teacher {
   rating: number;
   reviewCount: number;
   subscriptionActive: boolean;
+  subscriptionTier: string;
+  maxSessionsPerMonth: number;
   sessionsThisMonth: number;
   totalStudents: number;
   monthlyEarnings: number;
@@ -95,6 +97,8 @@ interface ApiTeacher {
   languages: string[];
   isOnline: boolean;
   subscriptionActive: boolean;
+  subscriptionTier?: string;
+  maxSessionsPerMonth?: number;
   sessionsThisMonth: number;
   totalStudents: number;
   monthlyEarnings: number;
@@ -142,6 +146,8 @@ function mapApiUserToUser(profile: ApiUserProfile): User | null {
       rating: Number(t.rating) || 0,
       reviewCount: t.reviewCount ?? 0,
       subscriptionActive: t.subscriptionActive ?? false,
+      subscriptionTier: t.subscriptionTier ?? "base",
+      maxSessionsPerMonth: t.maxSessionsPerMonth ?? 10,
       sessionsThisMonth: t.sessionsThisMonth ?? 0,
       totalStudents: t.totalStudents ?? 0,
       monthlyEarnings: t.monthlyEarnings ?? 0,

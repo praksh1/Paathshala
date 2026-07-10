@@ -19,6 +19,23 @@ const PAYMENT_HISTORY = [
   { id: "p3", amount: 2000, date: "Mar 2025", method: "eSewa", status: "paid" },
 ];
 
+export type SubscriptionTierKey = "base" | "tier1" | "tier2" | "tier3" | "tier4";
+
+interface TierInfo {
+  key: SubscriptionTierKey;
+  label: string;
+  sessions: number;
+  price: number;
+}
+
+export const SUBSCRIPTION_TIERS: TierInfo[] = [
+  { key: "base", label: "Base", sessions: 10, price: 2000 },
+  { key: "tier1", label: "Tier 1", sessions: 15, price: 2800 },
+  { key: "tier2", label: "Tier 2", sessions: 20, price: 3500 },
+  { key: "tier3", label: "Tier 3", sessions: 25, price: 4220 },
+  { key: "tier4", label: "Tier 4", sessions: 30, price: 4700 },
+];
+
 export default function Subscription() {
   const { user, updateUser } = useAuth();
   const colors = useColors();
@@ -29,9 +46,14 @@ export default function Subscription() {
   const { refresh: refreshNotifs } = useNotifications();
   const { from } = useLocalSearchParams<{ from?: string }>();
 
+  const currentTierKey = (teacher?.subscriptionTier as SubscriptionTierKey) ?? "base";
+  const [selectedTier, setSelectedTier] = useState<SubscriptionTierKey>(currentTierKey);
+  const tierInfo = SUBSCRIPTION_TIERS.find((t) => t.key === selectedTier) ?? SUBSCRIPTION_TIERS[0];
+
+  const maxSessions = teacher?.maxSessionsPerMonth ?? 10;
   const sessionsUsed = teacher?.sessionsThisMonth ?? 0;
-  const sessionsRemaining = 10 - sessionsUsed;
-  const progressPct = sessionsUsed / 10;
+  const sessionsRemaining = maxSessions - sessionsUsed;
+  const progressPct = maxSessions > 0 ? sessionsUsed / maxSessions : 0;
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -51,19 +73,24 @@ export default function Subscription() {
     // of redirecting to any external SDK.
     if (teacher?.id) {
       try {
-        await apiPost(`/teachers/${teacher.id}/subscribe`, {});
+        await apiPost(`/teachers/${teacher.id}/subscribe`, { tier: selectedTier });
       } catch (_e) {}
     }
-    await updateUser({ subscriptionActive: true, approvalStatus: "approved" });
+    await updateUser({
+      subscriptionActive: true,
+      approvalStatus: "approved",
+      subscriptionTier: selectedTier,
+      maxSessionsPerMonth: tierInfo.sessions,
+    });
 
     await addInAppNotification({
       title: "Subscription Payment Confirmed",
-      body: `NPR 2,000 paid via ${method === "esewa" ? "eSewa" : "Khalti"}. Your Sikshya Pro plan is active for July 2025.`,
+      body: `NPR ${tierInfo.price.toLocaleString()} paid via ${method === "esewa" ? "eSewa" : "Khalti"}. Your Sikshya Pro (${tierInfo.label}) plan is active for July 2025.`,
       type: "payment",
     });
     await refreshNotifs();
-    if (Platform.OS === "web") window.alert("Payment Successful!\n\nYour Sikshya Pro subscription is now active. Happy teaching!");
-    else Alert.alert("Payment Successful!", "Your Sikshya Pro subscription is now active. Happy teaching!");
+    if (Platform.OS === "web") window.alert(`Payment Successful!\n\nYour Sikshya Pro ${tierInfo.label} plan (${tierInfo.sessions} sessions/month) is now active. Happy teaching!`);
+    else Alert.alert("Payment Successful!", `Your Sikshya Pro ${tierInfo.label} plan (${tierInfo.sessions} sessions/month) is now active. Happy teaching!`);
 
     router.replace("/(teacher)");
   };
@@ -91,8 +118,8 @@ export default function Subscription() {
       >
         <View style={styles.planHeader}>
           <View>
-            <Text style={styles.planName}>Sikshya Pro</Text>
-            <Text style={styles.planPrice}>NPR 2,000 <Text style={styles.planPeriod}>/month</Text></Text>
+            <Text style={styles.planName}>Sikshya Pro — {tierInfo.label}</Text>
+            <Text style={styles.planPrice}>NPR {tierInfo.price.toLocaleString()} <Text style={styles.planPeriod}>/month</Text></Text>
           </View>
           <View style={[styles.activeBadge, { backgroundColor: teacher?.subscriptionActive ? "#22C55E30" : "#EF444430" }]}>
             <View style={[styles.dot, { backgroundColor: teacher?.subscriptionActive ? "#22C55E" : "#EF4444" }]} />
@@ -104,7 +131,7 @@ export default function Subscription() {
 
         <View style={styles.planFeatures}>
           {[
-            "10 sessions per month",
+            `${tierInfo.sessions} sessions per month`,
             "Up to 20 students per session",
             "60-minute maximum per session",
             "Session recording included",
@@ -124,10 +151,43 @@ export default function Subscription() {
         </View>
       </LinearGradient>
 
+      <View style={[styles.paySection, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <Text style={[styles.payTitle, { color: colors.foreground }]}>Choose Your Plan</Text>
+        <Text style={[styles.paySubtitle, { color: colors.mutedForeground }]}>
+          Select a tier based on how many sessions you plan to teach per month
+        </Text>
+        <View style={styles.tierList}>
+          {SUBSCRIPTION_TIERS.map((t) => {
+            const active = selectedTier === t.key;
+            return (
+              <TouchableOpacity
+                key={t.key}
+                style={[
+                  styles.tierRow,
+                  { borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary + "10" : colors.muted },
+                ]}
+                onPress={() => setSelectedTier(t.key)}
+                activeOpacity={0.7}
+                testID={`tier-${t.key}`}
+              >
+                <View style={styles.tierInfo}>
+                  <Text style={[styles.tierLabel, { color: active ? colors.primary : colors.foreground }]}>{t.label}</Text>
+                  <Text style={[styles.tierMeta, { color: colors.mutedForeground }]}>{t.sessions} sessions/month</Text>
+                </View>
+                <View style={styles.tierRight}>
+                  <Text style={[styles.tierPrice, { color: colors.foreground }]}>NPR {t.price.toLocaleString()}</Text>
+                  {active && <Feather name="check-circle" size={16} color={colors.primary} />}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
       <View style={[styles.usageCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.usageTitle, { color: colors.foreground }]}>Usage This Month</Text>
         <View style={styles.usageRow}>
-          <Text style={[styles.usageStat, { color: colors.foreground }]}>{sessionsUsed}/10 sessions used</Text>
+          <Text style={[styles.usageStat, { color: colors.foreground }]}>{sessionsUsed}/{maxSessions} sessions used</Text>
           <Text style={[styles.usageRemaining, { color: colors.success }]}>{sessionsRemaining} remaining</Text>
         </View>
         <View style={[styles.progressTrack, { backgroundColor: colors.muted }]}>
@@ -154,7 +214,7 @@ export default function Subscription() {
       <View style={[styles.paySection, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.payTitle, { color: colors.foreground }]}>Pay Monthly Subscription</Text>
         <Text style={[styles.paySubtitle, { color: colors.mutedForeground }]}>
-          Secure payment via Nepali payment gateways
+          Secure payment via Nepali payment gateways · {tierInfo.label} plan
         </Text>
 
         <View style={styles.methodRow}>
@@ -178,7 +238,7 @@ export default function Subscription() {
 
         <TouchableOpacity style={[styles.payBtn, { backgroundColor: colors.primary }]} onPress={handlePay} activeOpacity={0.85}>
           <Feather name="lock" size={16} color="#fff" />
-          <Text style={styles.payBtnText}>Pay NPR 2,000 via {selectedMethod === "esewa" ? "eSewa" : "Khalti"}</Text>
+          <Text style={styles.payBtnText}>Pay NPR {tierInfo.price.toLocaleString()} via {selectedMethod === "esewa" ? "eSewa" : "Khalti"}</Text>
         </TouchableOpacity>
 
         <View style={styles.secureNote}>
@@ -205,8 +265,8 @@ export default function Subscription() {
 
       <PaymentSheet
         visible={payVisible}
-        amount={2000}
-        label="Sikshya Pro · Monthly"
+        amount={tierInfo.price}
+        label={`Sikshya Pro · ${tierInfo.label}`}
         initialMethod={selectedMethod}
         onClose={() => setPayVisible(false)}
         onSuccess={handlePaymentSuccess}
@@ -248,6 +308,13 @@ const styles = StyleSheet.create({
   paySection: { borderRadius: 18, borderWidth: 1, padding: 18, gap: 14 },
   payTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   paySubtitle: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  tierList: { gap: 10 },
+  tierRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 14, borderWidth: 1.5, paddingHorizontal: 14, paddingVertical: 12 },
+  tierInfo: { gap: 2 },
+  tierLabel: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
+  tierMeta: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  tierRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tierPrice: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
   methodRow: { flexDirection: "row", gap: 12 },
   methodBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, borderWidth: 1.5, paddingVertical: 14 },
   methodIcon: { fontSize: 16, fontFamily: "Inter_700Bold" },
