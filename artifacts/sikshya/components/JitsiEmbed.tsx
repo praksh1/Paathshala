@@ -22,10 +22,12 @@ export default function JitsiEmbed({ roomName, displayName, style }: Props) {
     "config.startWithVideoMuted=false",
     "config.disableDeepLinking=true",
     "config.disablePictureInPicture=true",
+    "config.defaultLanguage=en",
     `config.toolbarButtons=${encodeURIComponent(JSON.stringify(TOOLBAR_BUTTONS))}`,
     "config.toolbarConfig.alwaysVisible=true",
     "interfaceConfig.TOOLBAR_BUTTONS=" + encodeURIComponent(JSON.stringify(TOOLBAR_BUTTONS)),
     "interfaceConfig.filmStripOnly=false",
+    "interfaceConfig.LANG_DETECTION=false",
     "config.disableChat=true",
     "config.chat.enabled=false",
     "config.etherpad.enabled=false",
@@ -33,7 +35,9 @@ export default function JitsiEmbed({ roomName, displayName, style }: Props) {
     "config.whiteboard.enabled=false",
     `userInfo.displayName=${encodeURIComponent(displayName)}`,
   ];
-  const url = `https://${JITSI_DOMAIN}/${safeRoomName}#${configParams.join("&")}`;
+  // `subject` is a top-level URL query param (not a hash config), and forces the
+  // room title to "Live Class" instead of the German default set by the server.
+  const url = `https://${JITSI_DOMAIN}/${safeRoomName}?subject=${encodeURIComponent("Live Class")}#${configParams.join("&")}`;
 
   return (
     <WebView

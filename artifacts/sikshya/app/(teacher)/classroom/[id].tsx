@@ -86,6 +86,67 @@ interface SessionData {
   duration: number; maxStudents: number; enrolledCount: number; status: string;
 }
 
+const PDFJS_VERSION = "3.11.174";
+const PDFJS_SCRIPT_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.js`;
+const PDFJS_WORKER_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
+
+let pdfJsLoadPromise: Promise<any> | null = null;
+
+function loadPdfJs(): Promise<any> {
+  if (typeof window === "undefined") return Promise.reject(new Error("PDF rendering requires a browser"));
+  const w = window as any;
+  if (w.pdfjsLib) return Promise.resolve(w.pdfjsLib);
+  if (pdfJsLoadPromise) return pdfJsLoadPromise;
+
+  pdfJsLoadPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${PDFJS_SCRIPT_SRC}"]`);
+    const onReady = () => {
+      const lib = (window as any).pdfjsLib;
+      if (!lib) { reject(new Error("pdf.js failed to initialize")); return; }
+      lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+      resolve(lib);
+    };
+    if (existing) {
+      existing.addEventListener("load", onReady);
+      existing.addEventListener("error", () => reject(new Error("Failed to load pdf.js")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = PDFJS_SCRIPT_SRC;
+    script.async = true;
+    script.onload = onReady;
+    script.onerror = () => reject(new Error("Failed to load pdf.js"));
+    document.body.appendChild(script);
+  });
+
+  return pdfJsLoadPromise;
+}
+
+// Mobile browsers cannot draw PDFs directly onto a canvas, so we rasterize the
+// first page of the PDF into a PNG via pdf.js and treat it like a normal image material.
+async function renderPdfFirstPageToImage(dataUrl: string): Promise<string> {
+  const pdfjsLib = await loadPdfJs();
+  const base64 = dataUrl.split(",")[1] ?? "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2 });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas 2D context unavailable");
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL("image/png");
+}
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 3;
+const ZOOM_STEP = 0.25;
+
 export default function Classroom() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
@@ -119,6 +180,7 @@ export default function Classroom() {
   const [chatMsg, setChatMsg] = useState("");
   const [isLandscape, setIsLandscape] = useState(false);
   const [videoExpanded, setVideoExpanded] = useState(false);
+  const [zoom, setZoom] = useState(1);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatScrollRef = useRef<ScrollView>(null);
   const canvasRef = useRef<View>(null);
@@ -265,10 +327,18 @@ export default function Classroom() {
 
   const PDF_ALERT_MSG = "For best performance, please upload materials as an image (JPG/PNG).";
 
-  const applyUploadedFile = (dataUrl: string, kind: "image" | "pdf") => {
+  const applyUploadedFile = async (dataUrl: string, kind: "image" | "pdf") => {
     if (kind === "pdf") {
-      if (Platform.OS === "web") window.alert(PDF_ALERT_MSG);
-      else Alert.alert("Unsupported File", PDF_ALERT_MSG);
+      if (Platform.OS === "web") {
+        try {
+          const imageDataUrl = await renderPdfFirstPageToImage(dataUrl);
+          sendMaterial(imageDataUrl, "image");
+        } catch {
+          window.alert(PDF_ALERT_MSG);
+        }
+        return;
+      }
+      Alert.alert("Unsupported File", PDF_ALERT_MSG);
       return;
     }
     sendMaterial(dataUrl, kind);
@@ -276,14 +346,10 @@ export default function Classroom() {
 
   const handleWebFileSelected = (file: File) => {
     const kind: "image" | "pdf" = file.type === "application/pdf" ? "pdf" : "image";
-    if (kind === "pdf") {
-      applyUploadedFile("", "pdf");
-      return;
-    }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      applyUploadedFile(dataUrl, "image");
+      applyUploadedFile(dataUrl, kind);
     };
     reader.readAsDataURL(file);
   };
@@ -414,7 +480,11 @@ export default function Classroom() {
         {/* Content area — unified flexbox: video feed confined on top, board/chat/participants on bottom.
             Video is persistently mounted so it never reconnects when switching tabs. */}
         <View style={s.contentArea}>
-        <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded]}>
+        {/* Video pane. Forced display:none (not just covered) while chatting — some mobile
+            browsers break the embedded call out into a native Picture-in-Picture window that
+            floats above all DOM content regardless of z-index, so removing it from layout
+            is the only reliable way to keep it from clashing with the chat tab. */}
+        <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
           <JitsiEmbed roomName={roomName} displayName={teacherName} style={StyleSheet.absoluteFill} />
           <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
             <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
@@ -464,64 +534,62 @@ export default function Classroom() {
               )}
             </View>
 
-            {/* Tool selection toolbar */}
-            <View style={s.toolSelector}>
-              {TOOLS.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={[s.toolSelectorBtn, tool === t.id && { backgroundColor: colors.primary }]}
-                  onPress={() => setTool(t.id)}
-                  activeOpacity={0.7}
-                >
-                  <Feather name={t.icon} size={15} color={tool === t.id ? "#fff" : "#999"} />
-                  <Text style={[s.toolSelectorText, tool === t.id && { color: "#fff" }]}>{t.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <View style={s.canvasScrollWrap}>
+              <View
+                ref={canvasRef}
+                style={[s.canvas, { transform: [{ scale: zoom }] }]}
+                {...panResponder.panHandlers}
+                onTouchStart={onTouchStart}
+                onTouchMove={onTouchMove}
+                onTouchEnd={onTouchEnd}
+              >
+                {material?.kind === "image" && (
+                  <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+                )}
+                <Svg style={StyleSheet.absoluteFill}>
+                  {paths.map((p, i) => renderShape(p, i))}
+                  {currentPath ? (
+                    <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  ) : null}
+                  {previewShape ? renderShape(previewShape, -1) : null}
+                </Svg>
+              </View>
 
-            <View
-              ref={canvasRef}
-              style={s.canvas}
-              {...panResponder.panHandlers}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-            >
-              {material?.kind === "image" && (
-                <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
-              )}
-              {material?.kind === "pdf" && Platform.OS === "web" &&
-                React.createElement("iframe", {
-                  src: material.dataUrl,
-                  style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none", borderRadius: 12, pointerEvents: "none" },
-                })}
-              <Svg style={StyleSheet.absoluteFill}>
-                {paths.map((p, i) => renderShape(p, i))}
-                {currentPath ? (
-                  <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                ) : null}
-                {previewShape ? renderShape(previewShape, -1) : null}
-              </Svg>
-            </View>
-            <View style={s.tools}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.toolsInner}>
-                {COLORS_PALETTE.map((c) => (
-                  <TouchableOpacity key={c} style={[s.colorDot, { backgroundColor: c, borderColor: c === "#FFFFFF" ? "#555" : c, borderWidth: penColor === c && !isEraser ? 3 : 1, transform: [{ scale: penColor === c && !isEraser ? 1.3 : 1 }] }]} onPress={() => { setPenColor(c); setIsEraser(false); }} activeOpacity={0.7} />
-                ))}
-                <View style={s.toolDivider} />
-                {PEN_SIZES.map((sz) => (
-                  <TouchableOpacity key={sz} style={[s.sizeBtn, penSize === sz && !isEraser && { borderColor: colors.primary }]} onPress={() => { setPenSize(sz); setIsEraser(false); }} activeOpacity={0.7}>
-                    <View style={{ width: sz * 2, height: sz * 2, borderRadius: sz, backgroundColor: "#fff" }} />
+              {/* Floating "island" toolbar — modern Miro/Freeform-style pill overlay */}
+              <View style={s.island} pointerEvents="box-none">
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.islandInner}>
+                  {TOOLS.map((t) => (
+                    <TouchableOpacity key={t.id} style={[s.islandBtn, tool === t.id && { backgroundColor: colors.primary }]} onPress={() => setTool(t.id)} activeOpacity={0.7}>
+                      <Feather name={t.icon} size={16} color={tool === t.id ? "#fff" : "#333"} />
+                    </TouchableOpacity>
+                  ))}
+                  <View style={s.islandDivider} />
+                  {COLORS_PALETTE.map((c) => (
+                    <TouchableOpacity key={c} style={[s.islandColorDot, { backgroundColor: c, borderColor: c === "#FFFFFF" ? "#CCC" : c, borderWidth: penColor === c && !isEraser ? 3 : 1, transform: [{ scale: penColor === c && !isEraser ? 1.15 : 1 }] }]} onPress={() => { setPenColor(c); setIsEraser(false); }} activeOpacity={0.7} />
+                  ))}
+                  <View style={s.islandDivider} />
+                  {PEN_SIZES.map((sz) => (
+                    <TouchableOpacity key={sz} style={[s.islandBtn, penSize === sz && !isEraser && { borderColor: colors.primary, borderWidth: 1.5 }]} onPress={() => { setPenSize(sz); setIsEraser(false); }} activeOpacity={0.7}>
+                      <View style={{ width: sz * 1.6, height: sz * 1.6, borderRadius: sz, backgroundColor: "#333" }} />
+                    </TouchableOpacity>
+                  ))}
+                  <View style={s.islandDivider} />
+                  <TouchableOpacity style={[s.islandBtn, isEraser && { backgroundColor: "#EDEDED" }]} onPress={() => setIsEraser(!isEraser)} activeOpacity={0.7}>
+                    <Feather name="delete" size={16} color="#333" />
                   </TouchableOpacity>
-                ))}
-                <View style={s.toolDivider} />
-                <TouchableOpacity style={[s.toolIconBtn, isEraser && { backgroundColor: "#333" }]} onPress={() => setIsEraser(!isEraser)} activeOpacity={0.7}>
-                  <Feather name="delete" size={17} color={isEraser ? "#fff" : "#999"} />
-                </TouchableOpacity>
-                <TouchableOpacity style={s.toolIconBtn} onPress={clearBoard} activeOpacity={0.7}>
-                  <Feather name="trash-2" size={17} color="#999" />
-                </TouchableOpacity>
-              </ScrollView>
+                  <TouchableOpacity style={s.islandBtn} onPress={clearBoard} activeOpacity={0.7}>
+                    <Feather name="trash-2" size={16} color="#333" />
+                  </TouchableOpacity>
+                  <View style={s.islandDivider} />
+                  <TouchableOpacity style={s.islandBtn} onPress={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))} activeOpacity={0.7}>
+                    <Feather name="zoom-out" size={16} color="#333" />
+                  </TouchableOpacity>
+                  <Text style={s.islandZoomText}>{Math.round(zoom * 100)}%</Text>
+                  <TouchableOpacity style={s.islandBtn} onPress={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))} activeOpacity={0.7}>
+                    <Feather name="zoom-in" size={16} color="#333" />
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
             </View>
             {/* Reactions bar on whiteboard */}
             <View style={s.reactionsBar}>
@@ -581,9 +649,10 @@ export default function Classroom() {
           </ScrollView>
         )}
 
-        {/* Chat */}
+        {/* Chat — solid opaque background + high z-index so it fully covers the video pane
+            if a mobile browser forces the call into a floating window regardless. */}
         {mode === "chat" && (
-          <View style={[s.flex, { paddingBottom: 0 }]}>
+          <View style={[s.flex, s.chatCover, { paddingBottom: 0 }]}>
             <ScrollView ref={chatScrollRef} style={s.flex} contentContainerStyle={s.chatMessages} onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: false })}>
               {messages.length === 0 && (
                 <Text style={s.emptyChat}>No messages yet. Students will appear here.</Text>
@@ -668,21 +737,30 @@ const s = StyleSheet.create({
   modeTabText: { fontSize: 12, fontFamily: "Inter_500Medium", color: "#666" },
   modeTabTextActive: { color: "#fff" },
   whiteboardArea: { flex: 1 },
-  canvas: { flex: 1, backgroundColor: "#FFFFFF", marginHorizontal: 12, marginTop: 4, borderRadius: 12 },
-  tools: { backgroundColor: "#111", paddingVertical: 7 },
-  toolsInner: { paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 7 },
-  colorDot: { width: 26, height: 26, borderRadius: 13 },
-  toolDivider: { width: 1, height: 26, backgroundColor: "#333", marginHorizontal: 2 },
-  sizeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: "#333" },
-  toolIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
+  canvasScrollWrap: {
+    flex: 1, marginHorizontal: 12, marginTop: 4, borderRadius: 12,
+    backgroundColor: "#FFFFFF", overflow: Platform.OS === "web" ? ("auto" as any) : "hidden",
+    position: "relative",
+  },
+  canvas: { flex: 1, width: "100%", height: "100%", transformOrigin: "0 0" } as object,
   uploadDock: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 4, zIndex: 50, position: "relative" },
   uploadDockBtnWrap: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, backgroundColor: "#C41E3A", paddingVertical: 14, shadowColor: "#C41E3A", shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6, position: "relative", overflow: "hidden", zIndex: 50, borderWidth: 1, borderColor: "#FF6B81" },
   uploadDockIcon: { zIndex: 51 },
   uploadDockBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff", zIndex: 51 },
   uploadDockClear: { width: 40, height: 40, borderRadius: 12, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
-  toolSelector: { flexDirection: "row", paddingHorizontal: 12, paddingBottom: 6, gap: 6 },
-  toolSelectorBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: 10, backgroundColor: "#1A1A1A", paddingVertical: 8 },
-  toolSelectorText: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#999" },
+  island: {
+    position: "absolute", left: 12, right: 12, bottom: 12, alignItems: "center", zIndex: 40,
+  },
+  islandInner: {
+    flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.92)", borderRadius: 22,
+    shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 10,
+    borderWidth: 1, borderColor: "rgba(0,0,0,0.06)",
+  },
+  islandBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#F3F3F3", justifyContent: "center", alignItems: "center" },
+  islandDivider: { width: 1, height: 22, backgroundColor: "#E2E2E2", marginHorizontal: 2 },
+  islandColorDot: { width: 24, height: 24, borderRadius: 12 },
+  islandZoomText: { fontSize: 11, fontFamily: "Inter_600SemiBold", color: "#333", minWidth: 34, textAlign: "center" },
   textModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
   textModalCard: { width: "100%", maxWidth: 360, backgroundColor: "#1A1A1A", borderRadius: 16, padding: 18, gap: 14 },
   textModalTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
@@ -719,7 +797,9 @@ const s = StyleSheet.create({
     overflow: "hidden", borderBottomWidth: 1, borderBottomColor: "#1A1A1A",
   },
   videoAreaExpanded: { flex: 1 },
+  videoAreaHidden: { display: "none" },
   boardArea: { flex: 1, overflow: "hidden" },
+  chatCover: { backgroundColor: "#0A0A0A", zIndex: 9999, position: "relative" },
   videoExpandBtn: {
     position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
     backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", zIndex: 5,

@@ -11,6 +11,10 @@ interface Props {
 const JITSI_DOMAIN = "meet.ffmuc.net";
 const JITSI_SCRIPT_SRC = `https://${JITSI_DOMAIN}/external_api.js`;
 
+// Explicit allow-list — chat, etherpad, sharedvideo, and whiteboard are strictly excluded
+// so users are forced to use our custom in-app tools instead of Jitsi's native ones.
+const TOOLBAR_BUTTONS = ["microphone", "camera", "desktop", "fullscreen", "hangup", "profile", "settings"];
+
 declare global {
   interface Window {
     JitsiMeetExternalAPI?: any;
@@ -65,8 +69,24 @@ export default function JitsiEmbed({ roomName, displayName, style }: Props) {
             startWithAudioMuted: false,
             startWithVideoMuted: false,
             disableDeepLinking: true,
+            defaultLanguage: "en",
+            disablePictureInPicture: true,
+            disableChat: true,
+            chat: { enabled: false },
+            etherpad: { enabled: false },
+            disableSharedVideo: true,
+            whiteboard: { enabled: false },
+            toolbarButtons: TOOLBAR_BUTTONS,
           },
-          interfaceConfigOverwrite: {},
+          interfaceConfigOverwrite: {
+            TOOLBAR_BUTTONS,
+            filmStripOnly: false,
+            LANG_DETECTION: false,
+          },
+        });
+
+        apiRef.current.on("videoConferenceJoined", () => {
+          apiRef.current?.executeCommand("subject", "Live Class");
         });
       })
       .catch((err) => {
@@ -86,6 +106,17 @@ export default function JitsiEmbed({ roomName, displayName, style }: Props) {
 
   return React.createElement("div", {
     ref: containerRef,
-    style: { border: "none", width: "100%", height: "100%", ...flat },
+    style: {
+      border: "none",
+      width: "100%",
+      height: "100%",
+      // Strict containment — keeps the Jitsi iframe confined to this box instead of
+      // breaking out into a floating/PiP window that can overlap other tabs (e.g. Chat).
+      position: "relative",
+      overflow: "hidden",
+      contain: "layout style paint",
+      isolation: "isolate",
+      ...flat,
+    },
   });
 }

@@ -207,7 +207,11 @@ export default function StudentClassroom() {
         {/* Content area — unified flexbox: video feed confined on top, board/chat on bottom.
             Video is persistently mounted so it never reconnects when switching tabs. */}
         <View style={s.contentArea}>
-        <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded]}>
+        {/* Video pane. Forced display:none (not just covered) while chatting — some mobile
+            browsers break the embedded call out into a native Picture-in-Picture window that
+            floats above all DOM content regardless of z-index, so removing it from layout
+            is the only reliable way to keep it from clashing with the chat tab. */}
+        <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
           <JitsiEmbed roomName={roomName} displayName={studentName} style={StyleSheet.absoluteFill} />
           <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
             <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
@@ -247,9 +251,10 @@ export default function StudentClassroom() {
           </View>
         )}
 
-        {/* Chat */}
+        {/* Chat — solid opaque background + high z-index so it fully covers the video pane
+            if a mobile browser forces the call into a floating window regardless. */}
         {mode === "chat" && (
-          <View style={s.flex}>
+          <View style={[s.flex, s.chatCover]}>
             <ScrollView ref={scrollRef} style={s.flex} contentContainerStyle={s.chatContent} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
               {messages.length === 0 && (
                 <Text style={s.emptyChat}>No messages yet. Send a question to the teacher!</Text>
@@ -358,7 +363,9 @@ const s = StyleSheet.create({
     overflow: "hidden", borderBottomWidth: 1, borderBottomColor: "#1A1A1A",
   },
   videoAreaExpanded: { flex: 1 },
+  videoAreaHidden: { display: "none" },
   boardWrap: { flex: 1, overflow: "hidden" },
+  chatCover: { backgroundColor: "#0A0A0A", zIndex: 9999, position: "relative" },
   videoExpandBtn: {
     position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
     backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", zIndex: 5,
