@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import { WebView } from "react-native-webview";
 
@@ -12,58 +12,45 @@ interface Props {
   onWatchedParticipantLeft?: () => void;
 }
 
-// A minimal HTML shell that loads the Daily.co prebuilt call via daily-js and bridges the
-// `participant-left` event back to React Native via postMessage — no native SDK/module
-// needed, keeping this lightweight (plain WebView, same footprint as the old Jitsi embed).
-function buildEmbedHtml(roomUrl: string, displayName: string): string {
-  const safeRoomUrl = JSON.stringify(roomUrl);
-  const safeDisplayName = JSON.stringify(displayName);
-  return `<!doctype html>
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <style>
-      html, body, #call { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-    </style>
-  </head>
-  <body>
-    <div id="call"></div>
-    <script src="https://unpkg.com/@daily-co/daily-js"></script>
-    <script>
-      function post(type, payload) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload }));
-        }
-      }
-      try {
-        var callFrame = window.DailyIframe.createFrame(document.getElementById('call'), {
-          iframeStyle: { width: '100%', height: '100%', border: '0' },
-          showLeaveButton: false,
-          showFullscreenButton: false,
-        });
-        callFrame.on('participant-left', function (event) {
+// iOS WKWebView disables WebRTC entirely when the page is loaded from an inline HTML
+// string (source={{ html }}) because it has no real origin — camera/mic getUserMedia calls
+// are silently blocked. Loading the Daily room by its real https:// URL (source={{ uri }})
+// gives the page a proper origin so WebRTC works. We inject a small bridge script after
+// load to relay the `participant-left` event back to React Native via postMessage.
+const INJECTED_BRIDGE_JS = `
+(function () {
+  function post(type, payload) {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload }));
+    }
+  }
+  function attach() {
+    try {
+      var frame = (window.callFrame) ||
+        (window.DailyIframe && window.DailyIframe.getCallInstance && window.DailyIframe.getCallInstance());
+      if (frame && frame.on && !frame.__sikshyaBridged) {
+        frame.__sikshyaBridged = true;
+        frame.on('participant-left', function (event) {
           post('participant-left', { userName: event && event.participant && event.participant.user_name });
         });
-        callFrame.on('error', function (event) {
+        frame.on('error', function (event) {
           post('error', { errorMsg: event && event.errorMsg });
         });
-        callFrame.join({ url: ${safeRoomUrl}, userName: ${safeDisplayName} }).catch(function (err) {
-          post('error', { errorMsg: String(err) });
-        });
-      } catch (err) {
-        post('error', { errorMsg: String(err) });
+        return;
       }
-    </script>
-  </body>
-</html>`;
-}
+    } catch (err) {}
+    setTimeout(attach, 500);
+  }
+  attach();
+  true;
+})();
+`;
 
 export default function DailyEmbed({ roomUrl, displayName, style, watchUserName, onWatchedParticipantLeft }: Props) {
-  const html = useMemo(() => buildEmbedHtml(roomUrl, displayName), [roomUrl, displayName]);
   const watchRef = useRef({ watchUserName, onWatchedParticipantLeft });
   watchRef.current = { watchUserName, onWatchedParticipantLeft };
 
-  const handleMessage = (event: { nativeEvent: { data: string } }) => {
+  const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
     try {
       const msg = JSON.parse(event.nativeEvent.data);
       if (msg.type === "participant-left") {
@@ -73,20 +60,27 @@ export default function DailyEmbed({ roomUrl, displayName, style, watchUserName,
         console.error("Daily.co embed error", msg.payload?.errorMsg);
       }
     } catch {}
-  };
+  }, []);
 
   if (!roomUrl) return null;
 
+  const url = new URL(roomUrl);
+  url.searchParams.set("userName", displayName);
+
   return (
     <WebView
-      source={{ html }}
+      source={{ uri: url.toString() }}
       style={style}
+      injectedJavaScript={INJECTED_BRIDGE_JS}
       allowsInlineMediaPlayback
       mediaPlaybackRequiresUserAction={false}
+      // Android-only: auto-grants camera/mic capture requests instead of prompting.
+      mediaCapturePermissionGrantType="grant"
       onPermissionRequest={(e: any) => e.nativeEvent.request.grant(e.nativeEvent.resources)}
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={["*"]}
+      allowsProtectedMedia
       onMessage={handleMessage}
     />
   );

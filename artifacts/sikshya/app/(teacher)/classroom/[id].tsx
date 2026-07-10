@@ -359,7 +359,7 @@ export default function Classroom() {
     if (Platform.OS === "web") {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = "image/*,.pdf";
+      input.accept = "image/jpeg, image/png, application/pdf";
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) return;
@@ -504,7 +504,7 @@ export default function Classroom() {
                   <Text style={s.uploadDockBtnText} pointerEvents="none">Upload Material (Image/PDF)</Text>
                   {React.createElement("input", {
                     type: "file",
-                    accept: "image/*,.pdf",
+                    accept: "image/jpeg, image/png, application/pdf",
                     onChange: (e: any) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
