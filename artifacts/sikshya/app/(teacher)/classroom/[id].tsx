@@ -29,8 +29,8 @@ import { apiGet, apiPatch } from "@/utils/api";
 import { useClassroomSocket, type DrawPath, type DrawTool } from "@/hooks/useClassroomSocket";
 import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import DailyEmbed from "@/components/DailyEmbed";
-import { getDailyRoomUrl } from "@/utils/daily";
 import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -183,12 +183,15 @@ export default function Classroom() {
   const [isLandscape, setIsLandscape] = useState(false);
   const [videoExpanded, setVideoExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [roomUrl, setRoomUrl] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatScrollRef = useRef<ScrollView>(null);
   const canvasRef = useRef<View>(null);
 
   useEffect(() => {
     loadSession();
+    loadRoom();
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -198,6 +201,18 @@ export default function Classroom() {
 
   const loadSession = async () => {
     try { setSession(await apiGet<SessionData>(`/sessions/${id}`)); } catch {}
+  };
+
+  // Daily.co rooms must be created server-side via their REST API before anyone can
+  // join them — the client can no longer just guess a room URL and connect to it.
+  const loadRoom = async () => {
+    try {
+      const { roomUrl: url } = await apiGet<{ roomUrl: string }>(`/sessions/${id}/room`);
+      setRoomUrl(url);
+      setRoomError(false);
+    } catch {
+      setRoomError(true);
+    }
   };
 
   const fmt = (s: number) =>
@@ -374,14 +389,22 @@ export default function Classroom() {
       return;
     }
 
+    // Use the native Expo image picker (UIImagePickerController) instead of the generic
+    // document picker — on iOS, DocumentPicker's "image" file type still routes through
+    // the Files app browser rather than the Photo Library, which is not what users expect
+    // from an "Upload Photo" button. expo-image-picker opens the actual Photo Library.
     try {
-      const doc = await DocumentPicker.getDocumentAsync({
-        type: ["image/png", "image/jpeg"],
-        copyToCacheDirectory: true,
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission Needed", "Photo Library access is required to upload a photo.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
       });
-      if (doc.canceled || !doc.assets?.[0]) return;
-      const asset = doc.assets[0];
-      applyUploadedFile(asset.uri, "image");
+      if (result.canceled || !result.assets?.[0]) return;
+      applyUploadedFile(result.assets[0].uri, "image");
     } catch {
       Alert.alert("Upload Failed", "Could not upload the photo. Please try again.");
     }
@@ -444,9 +467,11 @@ export default function Classroom() {
     setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
-  const participantCount = presenceCount > 0 ? presenceCount : (session?.enrolledCount ?? 0);
-
-  const roomUrl = getDailyRoomUrl(String(id ?? ""));
+  // Presence (from the live WebSocket room) is the source of truth once connected — it
+  // starts at 0 the moment the teacher starts the session (server force-clears any stale
+  // "ghost" entries on start). Falling back to enrolledCount before the socket connects
+  // caused a stale avatar/count to render even when nobody is actually present.
+  const participantCount = connected ? presenceCount : 0;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "#0A0A0A" }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -481,17 +506,20 @@ export default function Classroom() {
           </View>
         </View>
 
-        {/* Presence */}
-        <View style={s.presence}>
-          {Array.from({ length: Math.min(participantCount, 5) }).map((_, i) => (
-            <View key={i} style={[s.miniAvatar, { backgroundColor: ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444"][i % 5], marginLeft: i > 0 ? -10 : 0 }]}>
-              <Text style={s.miniAvatarText}>{String.fromCharCode(65 + i)}</Text>
-            </View>
-          ))}
-          <Text style={s.presenceText}>
-            {participantCount} {participantCount === 1 ? "student" : "students"}
-          </Text>
-        </View>
+        {/* Presence — do not render avatar bubbles or an "active" count at all when
+            nobody is actually present, so a ghost participant never shows up. */}
+        {participantCount > 0 && (
+          <View style={s.presence}>
+            {Array.from({ length: Math.min(participantCount, 5) }).map((_, i) => (
+              <View key={i} style={[s.miniAvatar, { backgroundColor: ["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444"][i % 5], marginLeft: i > 0 ? -10 : 0 }]}>
+                <Text style={s.miniAvatarText}>{String.fromCharCode(65 + i)}</Text>
+              </View>
+            ))}
+            <Text style={s.presenceText}>
+              {participantCount} {participantCount === 1 ? "student" : "students"}
+            </Text>
+          </View>
+        )}
 
         {/* Mode tabs */}
         <View style={s.modeSwitcher}>
@@ -517,15 +545,19 @@ export default function Classroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          {mediaPermissionState === "granted" ? (
+          {mediaPermissionState === "granted" && roomUrl ? (
             <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} />
           ) : (
             <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
               <ActivityIndicator color="#fff" />
               <Text style={s.permissionGateText}>
-                {mediaPermissionState === "denied"
+                {roomError
+                  ? "Couldn't set up the video room. Pull to retry."
+                  : mediaPermissionState === "denied"
                   ? "Camera & microphone access is required to start the live class."
-                  : "Requesting camera & microphone access…"}
+                  : mediaPermissionState !== "granted"
+                  ? "Requesting camera & microphone access…"
+                  : "Setting up video room…"}
               </Text>
             </View>
           )}

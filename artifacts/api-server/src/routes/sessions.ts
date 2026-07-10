@@ -3,6 +3,7 @@ import { Router, type IRouter } from "express";
 import { db, sessionsTable, sessionEnrollmentsTable, teacherProfilesTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
 import { broadcastSessionStatus, resetRoomPresence } from "../ws/classroomHub";
+import { ensureDailyRoom } from "../lib/daily";
 
 const router: IRouter = Router();
 
@@ -136,6 +137,28 @@ router.get("/sessions/:id", async (req, res): Promise<void> => {
   res.json(session);
 });
 
+// Ensures a Daily.co room exists for this session and returns its join URL. Daily rooms
+// must be explicitly created via the REST API before anyone can join them — visiting a
+// room URL for a room that was never created fails with "The meeting you're trying to
+// join does not exist." Both the teacher (on start) and students (on join) call this so
+// the room is guaranteed to exist regardless of who gets there first.
+router.get("/sessions/:id/room", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid session ID" }); return; }
+
+  const [session] = await db.select().from(sessionsTable).where(eq(sessionsTable.id, id));
+  if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+
+  try {
+    const roomUrl = await ensureDailyRoom(id);
+    res.json({ roomUrl });
+  } catch (err) {
+    req.log.error({ err, sessionId: id }, "Failed to ensure Daily room");
+    res.status(502).json({ error: "Failed to set up video room" });
+  }
+});
+
 const ALLOWED_STATUSES = ["upcoming", "live", "completed", "cancelled"];
 
 router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
@@ -191,6 +214,14 @@ router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
     // session (e.g. a connection that never closed cleanly) so the participant count
     // reads exactly 0 the moment the teacher starts the class.
     resetRoomPresence(String(id));
+
+    // Proactively create the Daily.co room the moment the teacher starts the session,
+    // so it already exists by the time either side's WebView tries to join it.
+    try {
+      await ensureDailyRoom(id);
+    } catch (err) {
+      req.log.error({ err, sessionId: id }, "Failed to pre-create Daily room on session start");
+    }
   }
 
   const [session] = await db.update(sessionsTable).set(updates).where(eq(sessionsTable.id, id)).returning();

@@ -24,7 +24,6 @@ import { apiGet } from "@/utils/api";
 import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
 import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import DailyEmbed from "@/components/DailyEmbed";
-import { getDailyRoomUrl } from "@/utils/daily";
 import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -91,11 +90,14 @@ export default function StudentClassroom() {
   const [mode, setMode] = useState<Mode>("board");
   const [videoExpanded, setVideoExpanded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
+  const [roomUrl, setRoomUrl] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     loadSession();
+    loadRoom();
     timerRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -105,6 +107,19 @@ export default function StudentClassroom() {
 
   const loadSession = async () => {
     try { setSession(await apiGet<SessionData>(`/sessions/${id}`)); } catch {}
+  };
+
+  // Daily.co rooms must be created server-side via their REST API before anyone can
+  // join them — this also covers the case where a student joins before the teacher's
+  // own "start session" call has run, since the room is created idempotently either way.
+  const loadRoom = async () => {
+    try {
+      const { roomUrl: url } = await apiGet<{ roomUrl: string }>(`/sessions/${id}/room`);
+      setRoomUrl(url);
+      setRoomError(false);
+    } catch {
+      setRoomError(true);
+    }
   };
 
   useEffect(() => {
@@ -151,7 +166,10 @@ export default function StudentClassroom() {
     }
   };
 
-  const roomUrl = getDailyRoomUrl(String(id ?? ""));
+  // Presence starts at 0 the instant the server clears stale entries on session start;
+  // don't fall back to enrolledCount before the socket connects, or a ghost count/avatar
+  // shows up for a class nobody has actually joined yet.
+  const livePresenceCount = connected ? presenceCount : 0;
 
   const notifyTeacherLeft = () => {
     const msg = "The teacher has disconnected. They may rejoin shortly — you can wait here or leave the session.";
@@ -190,7 +208,9 @@ export default function StudentClassroom() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.teacherName}>{session?.teacherName ?? "Teacher"} is presenting</Text>
-            <Text style={s.enrolledText}>{presenceCount > 0 ? presenceCount : (session?.enrolledCount ?? 0)} in session</Text>
+            <Text style={s.enrolledText}>
+              {livePresenceCount > 0 ? `${livePresenceCount} in session` : "No one else here yet"}
+            </Text>
           </View>
           <View style={s.onlineRow}>
             <View style={[s.onlineDot, { backgroundColor: connected ? "#22C55E" : "#F59E0B" }]} />
@@ -220,7 +240,7 @@ export default function StudentClassroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          {mediaPermissionState === "granted" ? (
+          {mediaPermissionState === "granted" && roomUrl ? (
             <DailyEmbed
               roomUrl={roomUrl}
               displayName={studentName}
@@ -232,9 +252,13 @@ export default function StudentClassroom() {
             <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
               <ActivityIndicator color="#fff" />
               <Text style={s.permissionGateText}>
-                {mediaPermissionState === "denied"
+                {roomError
+                  ? "Couldn't set up the video room. Pull to retry."
+                  : mediaPermissionState === "denied"
                   ? "Camera & microphone access is required to join the live class."
-                  : "Requesting camera & microphone access…"}
+                  : mediaPermissionState !== "granted"
+                  ? "Requesting camera & microphone access…"
+                  : "Setting up video room…"}
               </Text>
             </View>
           )}
