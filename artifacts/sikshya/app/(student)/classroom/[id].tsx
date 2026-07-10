@@ -3,6 +3,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
@@ -82,7 +83,7 @@ export default function StudentClassroom() {
   const { connected, presenceCount, messages, remotePaths, floatingReactions, material, sessionStatus, sendChat, sendReaction } =
     useClassroomSocket({ sessionId: id ?? "", name: studentName, role: "student" });
 
-  useMediaPermissions();
+  const mediaPermissionState = useMediaPermissions();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -219,13 +220,24 @@ export default function StudentClassroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          <DailyEmbed
-            roomUrl={roomUrl}
-            displayName={studentName}
-            style={StyleSheet.absoluteFill}
-            watchUserName={session?.teacherName}
-            onWatchedParticipantLeft={notifyTeacherLeft}
-          />
+          {mediaPermissionState === "granted" ? (
+            <DailyEmbed
+              roomUrl={roomUrl}
+              displayName={studentName}
+              style={StyleSheet.absoluteFill}
+              watchUserName={session?.teacherName}
+              onWatchedParticipantLeft={notifyTeacherLeft}
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
+              <ActivityIndicator color="#fff" />
+              <Text style={s.permissionGateText}>
+                {mediaPermissionState === "denied"
+                  ? "Camera & microphone access is required to join the live class."
+                  : "Requesting camera & microphone access…"}
+              </Text>
+            </View>
+          )}
           <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
             <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
           </TouchableOpacity>
@@ -377,6 +389,8 @@ const s = StyleSheet.create({
   },
   videoAreaExpanded: { flex: 1 },
   videoAreaHidden: { display: "none" },
+  permissionGate: { alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 24 },
+  permissionGateText: { color: "#ccc", fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
   boardWrap: { flex: 1, overflow: "hidden" },
   chatCover: { backgroundColor: "#0A0A0A", zIndex: 9999, position: "relative" },
   videoExpandBtn: {

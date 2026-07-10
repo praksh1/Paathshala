@@ -4,6 +4,7 @@ import * as ScreenOrientation from "expo-screen-orientation";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Dimensions,
@@ -161,7 +162,7 @@ export default function Classroom() {
   const { connected, presenceCount, messages, floatingReactions, material, sendChat, sendReaction, sendDrawCommit, sendBoardClear, sendMaterial, clearMaterial } =
     useClassroomSocket({ sessionId: id ?? "", name: teacherName, role: "teacher" });
 
-  useMediaPermissions();
+  const mediaPermissionState = useMediaPermissions();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [mode, setMode] = useState<Mode>("whiteboard");
@@ -355,11 +356,15 @@ export default function Classroom() {
     reader.readAsDataURL(file);
   };
 
-  const handleUploadMaterial = async () => {
+  // Split into two distinct pickers: iOS's WKWebView file input only offers the Photo
+  // Library picker when `accept` is scoped to images alone — mixing in `application/pdf`
+  // forces iOS to fall back to the Files app for both. Two separate inputs/buttons let each
+  // one open the picker the user actually expects (Photo Library vs Files).
+  const handleUploadPhoto = async () => {
     if (Platform.OS === "web") {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = "image/jpeg, image/png, application/pdf";
+      input.accept = "image/*";
       input.onchange = () => {
         const file = input.files?.[0];
         if (!file) return;
@@ -371,15 +376,41 @@ export default function Classroom() {
 
     try {
       const doc = await DocumentPicker.getDocumentAsync({
-        type: ["image/png", "image/jpeg", "application/pdf"],
+        type: ["image/png", "image/jpeg"],
         copyToCacheDirectory: true,
       });
       if (doc.canceled || !doc.assets?.[0]) return;
       const asset = doc.assets[0];
-      const kind = asset.mimeType === "application/pdf" ? "pdf" : "image";
-      applyUploadedFile(asset.uri, kind);
+      applyUploadedFile(asset.uri, "image");
     } catch {
-      Alert.alert("Upload Failed", "Could not upload the material. Please try again.");
+      Alert.alert("Upload Failed", "Could not upload the photo. Please try again.");
+    }
+  };
+
+  const handleUploadPdf = async () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/pdf";
+      input.onchange = () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        handleWebFileSelected(file);
+      };
+      input.click();
+      return;
+    }
+
+    try {
+      const doc = await DocumentPicker.getDocumentAsync({
+        type: ["application/pdf"],
+        copyToCacheDirectory: true,
+      });
+      if (doc.canceled || !doc.assets?.[0]) return;
+      const asset = doc.assets[0];
+      applyUploadedFile(asset.uri, "pdf");
+    } catch {
+      Alert.alert("Upload Failed", "Could not upload the PDF. Please try again.");
     }
   };
 
@@ -486,7 +517,18 @@ export default function Classroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} />
+          {mediaPermissionState === "granted" ? (
+            <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
+              <ActivityIndicator color="#fff" />
+              <Text style={s.permissionGateText}>
+                {mediaPermissionState === "denied"
+                  ? "Camera & microphone access is required to start the live class."
+                  : "Requesting camera & microphone access…"}
+              </Text>
+            </View>
+          )}
           <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
             <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
           </TouchableOpacity>
@@ -499,34 +541,65 @@ export default function Classroom() {
             {/* Permanently docked upload button — always visible above the canvas, above the toolbar */}
             <View style={s.uploadDock}>
               {Platform.OS === "web" ? (
-                <View style={s.uploadDockBtnWrap}>
-                  <Feather name="upload-cloud" size={16} color="#fff" style={s.uploadDockIcon} pointerEvents="none" />
-                  <Text style={s.uploadDockBtnText} pointerEvents="none">Upload Material (Image/PDF)</Text>
-                  {React.createElement("input", {
-                    type: "file",
-                    accept: "image/jpeg, image/png, application/pdf",
-                    onChange: (e: any) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      handleWebFileSelected(file);
-                      e.target.value = "";
-                    },
-                    style: {
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      opacity: 0,
-                      cursor: "pointer",
-                      zIndex: 9999,
-                    },
-                  })}
-                </View>
+                <>
+                  <View style={s.uploadDockBtnWrap}>
+                    <Feather name="image" size={16} color="#fff" style={s.uploadDockIcon} pointerEvents="none" />
+                    <Text style={s.uploadDockBtnText} pointerEvents="none">Upload Photo</Text>
+                    {React.createElement("input", {
+                      type: "file",
+                      accept: "image/*",
+                      onChange: (e: any) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        handleWebFileSelected(file);
+                        e.target.value = "";
+                      },
+                      style: {
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        opacity: 0,
+                        cursor: "pointer",
+                        zIndex: 9999,
+                      },
+                    })}
+                  </View>
+                  <View style={s.uploadDockBtnWrap}>
+                    <Feather name="file-text" size={16} color="#fff" style={s.uploadDockIcon} pointerEvents="none" />
+                    <Text style={s.uploadDockBtnText} pointerEvents="none">Upload PDF</Text>
+                    {React.createElement("input", {
+                      type: "file",
+                      accept: "application/pdf",
+                      onChange: (e: any) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        handleWebFileSelected(file);
+                        e.target.value = "";
+                      },
+                      style: {
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        opacity: 0,
+                        cursor: "pointer",
+                        zIndex: 9999,
+                      },
+                    })}
+                  </View>
+                </>
               ) : (
-                <TouchableOpacity style={s.uploadDockBtnWrap} onPress={handleUploadMaterial} activeOpacity={0.8}>
-                  <Feather name="upload-cloud" size={16} color="#fff" style={s.uploadDockIcon} />
-                  <Text style={s.uploadDockBtnText}>Upload Material (Image/PDF)</Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity style={s.uploadDockBtnWrap} onPress={handleUploadPhoto} activeOpacity={0.8}>
+                    <Feather name="image" size={16} color="#fff" style={s.uploadDockIcon} />
+                    <Text style={s.uploadDockBtnText}>Upload Photo</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.uploadDockBtnWrap} onPress={handleUploadPdf} activeOpacity={0.8}>
+                    <Feather name="file-text" size={16} color="#fff" style={s.uploadDockIcon} />
+                    <Text style={s.uploadDockBtnText}>Upload PDF</Text>
+                  </TouchableOpacity>
+                </>
               )}
               {material && (
                 <TouchableOpacity style={s.uploadDockClear} onPress={clearMaterial} activeOpacity={0.7}>
@@ -799,6 +872,8 @@ const s = StyleSheet.create({
   },
   videoAreaExpanded: { flex: 1 },
   videoAreaHidden: { display: "none" },
+  permissionGate: { alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 24 },
+  permissionGateText: { color: "#ccc", fontSize: 13, fontFamily: "Inter_400Regular", textAlign: "center" },
   boardArea: { flex: 1, overflow: "hidden" },
   chatCover: { backgroundColor: "#0A0A0A", zIndex: 9999, position: "relative" },
   videoExpandBtn: {

@@ -9,3 +9,4 @@
 - [Lazy ghost-session expiry](lazy-ghost-session-expiry.md) — seed/bot "live" sessions never flip to completed on their own; expire stale ones on read instead of a cron job.
 - [Free follow vs paid subscription](free-follow-vs-paid-subscription.md) — keep a teacher's own paid subscription tier separate from a student's free "follow" relationship; don't overload one table for both.
 - [Drizzle group-by aggregation errors](drizzle-group-by-aggregation.md) — grouped SQL aggregates (array_agg + case + filter) can fail at runtime despite compiling; prefer JS aggregation for small per-user datasets.
+- [iOS WebView WebRTC + file picker gotchas](ios-webview-webrtc-filepicker.md) — inline HTML WebViews block WebRTC on iOS; native camera/mic perms must be granted before mount; mixed image+PDF accept forces Files app over Photo Library.

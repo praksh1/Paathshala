@@ -55,6 +55,12 @@
           "photosPermission": "Sikshya needs access to your photos to upload credential documents.",
           "cameraPermission": "Sikshya needs access to your camera to capture credential documents."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Sikshya needs camera access for live classroom video."
+        }
       ]
     ],
     "experiments": {
