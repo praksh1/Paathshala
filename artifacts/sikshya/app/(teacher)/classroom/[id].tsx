@@ -2,12 +2,13 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Alert,
   Animated,
   Dimensions,
   KeyboardAvoidingView,
+  Modal,
   PanResponder,
   Platform,
   ScrollView,
@@ -16,14 +17,15 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  type GestureResponderEvent,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Line, Circle, Text as SvgText, Polygon } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/context/AuthContext";
 import type { Teacher } from "@/context/AuthContext";
 import { apiGet, apiPatch } from "@/utils/api";
-import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
+import { useClassroomSocket, type DrawPath, type DrawTool } from "@/hooks/useClassroomSocket";
 import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import JitsiEmbed from "@/components/JitsiEmbed";
 import * as DocumentPicker from "expo-document-picker";
@@ -35,6 +37,49 @@ type Mode = "whiteboard" | "participants" | "chat" | "call";
 const COLORS_PALETTE = ["#0D0D0D", "#C41E3A", "#1A365D", "#16A34A", "#F5A623", "#8B5CF6", "#FFFFFF"];
 const PEN_SIZES = [3, 6, 10];
 const REACTION_EMOJIS = ["👍", "🙋", "❓", "😊", "🔥"];
+
+const TOOLS: { id: DrawTool; icon: keyof typeof Feather.glyphMap; label: string }[] = [
+  { id: "pen", icon: "edit-3", label: "Pen" },
+  { id: "line", icon: "minus", label: "Line" },
+  { id: "arrow", icon: "arrow-up-right", label: "Arrow" },
+  { id: "circle", icon: "circle", label: "Circle" },
+  { id: "text", icon: "type", label: "Text" },
+];
+
+function renderShape(p: DrawPath, i: number) {
+  switch (p.tool) {
+    case "line":
+      return <Line key={i} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.color} strokeWidth={p.width} strokeLinecap="round" />;
+    case "arrow": {
+      const x1 = p.x1 ?? 0, y1 = p.y1 ?? 0, x2 = p.x2 ?? 0, y2 = p.y2 ?? 0;
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      const headLen = Math.max(10, p.width * 3);
+      const p1x = x2 - headLen * Math.cos(angle - Math.PI / 7);
+      const p1y = y2 - headLen * Math.sin(angle - Math.PI / 7);
+      const p2x = x2 - headLen * Math.cos(angle + Math.PI / 7);
+      const p2y = y2 - headLen * Math.sin(angle + Math.PI / 7);
+      return (
+        <React.Fragment key={i}>
+          <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={p.color} strokeWidth={p.width} strokeLinecap="round" />
+          <Polygon points={`${x2},${y2} ${p1x},${p1y} ${p2x},${p2y}`} fill={p.color} />
+        </React.Fragment>
+      );
+    }
+    case "circle": {
+      const cx = p.cx ?? 0, cy = p.cy ?? 0, r = p.r ?? 0;
+      return <Circle key={i} cx={cx} cy={cy} r={r} stroke={p.color} strokeWidth={p.width} fill="none" />;
+    }
+    case "text":
+      return (
+        <SvgText key={i} x={p.x} y={p.y} fill={p.color} fontSize={Math.max(14, p.width * 6)} fontWeight="600">
+          {p.text}
+        </SvgText>
+      );
+    case "pen":
+    default:
+      return <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+  }
+}
 
 interface SessionData {
   id: number; topic: string; subject: string; teacherName: string;
@@ -60,6 +105,12 @@ export default function Classroom() {
   const [mode, setMode] = useState<Mode>("whiteboard");
   const [paths, setPaths] = useState<DrawPath[]>([]);
   const [currentPath, setCurrentPath] = useState("");
+  const [tool, setTool] = useState<DrawTool>("pen");
+  const [previewShape, setPreviewShape] = useState<DrawPath | null>(null);
+  const [textModalVisible, setTextModalVisible] = useState(false);
+  const [textInputValue, setTextInputValue] = useState("");
+  const pendingTextPoint = useRef<{ x: number; y: number } | null>(null);
+  const startPoint = useRef<{ x: number; y: number } | null>(null);
   const [penColor, setPenColor] = useState("#0D0D0D");
   const [penSize, setPenSize] = useState(3);
   const [isEraser, setIsEraser] = useState(false);
@@ -69,6 +120,7 @@ export default function Classroom() {
   const [isLandscape, setIsLandscape] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatScrollRef = useRef<ScrollView>(null);
+  const canvasRef = useRef<View>(null);
 
   useEffect(() => {
     loadSession();
@@ -97,31 +149,116 @@ export default function Classroom() {
     } catch {}
   };
 
+  const handleGestureStart = useCallback(
+    (x: number, y: number) => {
+      const color = isEraser ? "#FFFFFF" : penColor;
+      const width = isEraser ? 24 : penSize;
+
+      if (tool === "pen") {
+        setCurrentPath(`M${x.toFixed(1)},${y.toFixed(1)}`);
+        return;
+      }
+      if (tool === "text") {
+        pendingTextPoint.current = { x, y };
+        setTextInputValue("");
+        setTextModalVisible(true);
+        return;
+      }
+      startPoint.current = { x, y };
+      if (tool === "line" || tool === "arrow") {
+        setPreviewShape({ tool, color, width, x1: x, y1: y, x2: x, y2: y });
+      } else if (tool === "circle") {
+        setPreviewShape({ tool, color, width, cx: x, cy: y, r: 0 });
+      }
+    },
+    [tool, isEraser, penColor, penSize],
+  );
+
+  const handleGestureMove = useCallback(
+    (x: number, y: number) => {
+      if (tool === "pen") {
+        setCurrentPath((p) => (p ? `${p} L${x.toFixed(1)},${y.toFixed(1)}` : p));
+        return;
+      }
+      const start = startPoint.current;
+      if (!start) return;
+      if (tool === "line" || tool === "arrow") {
+        setPreviewShape((prev) => (prev ? { ...prev, x2: x, y2: y } : prev));
+      } else if (tool === "circle") {
+        const r = Math.hypot(x - start.x, y - start.y);
+        setPreviewShape((prev) => (prev ? { ...prev, r } : prev));
+      }
+    },
+    [tool],
+  );
+
+  const handleGestureEnd = useCallback(() => {
+    if (tool === "pen") {
+      if (currentPath) {
+        const color = isEraser ? "#FFFFFF" : penColor;
+        const width = isEraser ? 24 : penSize;
+        const shape: DrawPath = { tool: "pen", d: currentPath, color, width };
+        setPaths((prev) => [...prev, shape]);
+        sendDrawCommit(shape);
+        setCurrentPath("");
+      }
+      return;
+    }
+    if (previewShape) {
+      setPaths((prev) => [...prev, previewShape]);
+      sendDrawCommit(previewShape);
+      setPreviewShape(null);
+    }
+    startPoint.current = null;
+  }, [tool, currentPath, isEraser, penColor, penSize, previewShape, sendDrawCommit]);
+
   const panResponder = PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: (e) => {
       const { locationX, locationY } = e.nativeEvent;
-      setCurrentPath(`M${locationX.toFixed(1)},${locationY.toFixed(1)}`);
+      handleGestureStart(locationX, locationY);
     },
     onPanResponderMove: (e) => {
       const { locationX, locationY } = e.nativeEvent;
-      setCurrentPath((p) => `${p} L${locationX.toFixed(1)},${locationY.toFixed(1)}`);
+      handleGestureMove(locationX, locationY);
     },
-    onPanResponderRelease: () => {
-      if (currentPath) {
-        const color = isEraser ? "#FFFFFF" : penColor;
-        const width = isEraser ? 24 : penSize;
-        setPaths((prev) => [...prev, { d: currentPath, color, width }]);
-        sendDrawCommit(currentPath, color, width);
-        setCurrentPath("");
-      }
-    },
+    onPanResponderRelease: handleGestureEnd,
   });
+
+  const extractTouchPoint = (e: GestureResponderEvent): { x: number; y: number } | null => {
+    const touch = e.nativeEvent.touches?.[0] ?? e.nativeEvent;
+    if (touch == null) return null;
+    return { x: touch.locationX, y: touch.locationY };
+  };
+
+  const onTouchStart = (e: GestureResponderEvent) => {
+    const pt = extractTouchPoint(e);
+    if (pt) handleGestureStart(pt.x, pt.y);
+  };
+  const onTouchMove = (e: GestureResponderEvent) => {
+    const pt = extractTouchPoint(e);
+    if (pt) handleGestureMove(pt.x, pt.y);
+  };
+  const onTouchEnd = () => handleGestureEnd();
+
+  const confirmTextShape = () => {
+    const point = pendingTextPoint.current;
+    const value = textInputValue.trim();
+    setTextModalVisible(false);
+    if (point && value) {
+      const shape: DrawPath = { tool: "text", text: value, x: point.x, y: point.y, color: penColor, width: penSize };
+      setPaths((prev) => [...prev, shape]);
+      sendDrawCommit(shape);
+    }
+    pendingTextPoint.current = null;
+    setTextInputValue("");
+  };
 
   const clearBoard = () => {
     setPaths([]);
     setCurrentPath("");
+    setPreviewShape(null);
     sendBoardClear();
   };
 
@@ -263,7 +400,42 @@ export default function Classroom() {
         {/* Whiteboard */}
         {mode === "whiteboard" && (
           <View style={s.whiteboardArea}>
-            <View style={s.canvas} {...panResponder.panHandlers}>
+            {/* Permanently docked upload button — always visible above the canvas */}
+            <View style={s.uploadDock}>
+              <TouchableOpacity style={s.uploadDockBtn} onPress={handleUploadMaterial} activeOpacity={0.8}>
+                <Feather name="upload-cloud" size={16} color="#fff" />
+                <Text style={s.uploadDockBtnText}>Upload Material (Image/PDF)</Text>
+              </TouchableOpacity>
+              {material && (
+                <TouchableOpacity style={s.uploadDockClear} onPress={clearMaterial} activeOpacity={0.7}>
+                  <Feather name="x-circle" size={18} color="#EF4444" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Tool selection toolbar */}
+            <View style={s.toolSelector}>
+              {TOOLS.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={[s.toolSelectorBtn, tool === t.id && { backgroundColor: colors.primary }]}
+                  onPress={() => setTool(t.id)}
+                  activeOpacity={0.7}
+                >
+                  <Feather name={t.icon} size={15} color={tool === t.id ? "#fff" : "#999"} />
+                  <Text style={[s.toolSelectorText, tool === t.id && { color: "#fff" }]}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View
+              ref={canvasRef}
+              style={s.canvas}
+              {...panResponder.panHandlers}
+              onTouchStart={onTouchStart}
+              onTouchMove={onTouchMove}
+              onTouchEnd={onTouchEnd}
+            >
               {material?.kind === "image" && (
                 <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
               )}
@@ -273,12 +445,11 @@ export default function Classroom() {
                   style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none", borderRadius: 12, pointerEvents: "none" },
                 })}
               <Svg style={StyleSheet.absoluteFill}>
-                {paths.map((p, i) => (
-                  <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                ))}
+                {paths.map((p, i) => renderShape(p, i))}
                 {currentPath ? (
                   <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 ) : null}
+                {previewShape ? renderShape(previewShape, -1) : null}
               </Svg>
             </View>
             <View style={s.tools}>
@@ -299,16 +470,6 @@ export default function Classroom() {
                 <TouchableOpacity style={s.toolIconBtn} onPress={clearBoard} activeOpacity={0.7}>
                   <Feather name="trash-2" size={17} color="#999" />
                 </TouchableOpacity>
-                <View style={s.toolDivider} />
-                <TouchableOpacity style={s.uploadBtn} onPress={handleUploadMaterial} activeOpacity={0.7}>
-                  <Feather name="upload" size={14} color="#fff" />
-                  <Text style={s.uploadBtnText}>Upload Material</Text>
-                </TouchableOpacity>
-                {material && (
-                  <TouchableOpacity style={s.toolIconBtn} onPress={clearMaterial} activeOpacity={0.7}>
-                    <Feather name="image" size={17} color="#EF4444" />
-                  </TouchableOpacity>
-                )}
               </ScrollView>
             </View>
             {/* Reactions bar on whiteboard */}
@@ -321,6 +482,32 @@ export default function Classroom() {
             </View>
           </View>
         )}
+
+        {/* Text tool input modal */}
+        <Modal visible={textModalVisible} transparent animationType="fade" onRequestClose={() => setTextModalVisible(false)}>
+          <View style={s.textModalOverlay}>
+            <View style={s.textModalCard}>
+              <Text style={s.textModalTitle}>Add Text</Text>
+              <TextInput
+                style={s.textModalInput}
+                value={textInputValue}
+                onChangeText={setTextInputValue}
+                placeholder="Type text…"
+                placeholderTextColor="#666"
+                autoFocus
+                onSubmitEditing={confirmTextShape}
+              />
+              <View style={s.textModalActions}>
+                <TouchableOpacity style={s.textModalCancel} onPress={() => { setTextModalVisible(false); pendingTextPoint.current = null; }} activeOpacity={0.7}>
+                  <Text style={s.textModalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.textModalConfirm, { backgroundColor: colors.primary }]} onPress={confirmTextShape} activeOpacity={0.8}>
+                  <Text style={s.textModalConfirmText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Participants */}
         {mode === "participants" && (
@@ -448,6 +635,22 @@ const s = StyleSheet.create({
   toolIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
   uploadBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 17, backgroundColor: "#2A2A2A", paddingHorizontal: 12, height: 34 },
   uploadBtnText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  uploadDock: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 4 },
+  uploadDockBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, backgroundColor: "#C41E3A", paddingVertical: 12, shadowColor: "#C41E3A", shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 4 },
+  uploadDockBtnText: { fontSize: 13, fontFamily: "Inter_700Bold", color: "#fff" },
+  uploadDockClear: { width: 40, height: 40, borderRadius: 12, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
+  toolSelector: { flexDirection: "row", paddingHorizontal: 12, paddingBottom: 6, gap: 6 },
+  toolSelectorBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, borderRadius: 10, backgroundColor: "#1A1A1A", paddingVertical: 8 },
+  toolSelectorText: { fontSize: 10, fontFamily: "Inter_600SemiBold", color: "#999" },
+  textModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
+  textModalCard: { width: "100%", maxWidth: 360, backgroundColor: "#1A1A1A", borderRadius: 16, padding: 18, gap: 14 },
+  textModalTitle: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  textModalInput: { backgroundColor: "#0D0D0D", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, fontFamily: "Inter_400Regular", color: "#fff", outlineStyle: "none" } as object,
+  textModalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10 },
+  textModalCancel: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  textModalCancelText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#999" },
+  textModalConfirm: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
+  textModalConfirmText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
   reactionsBar: { flexDirection: "row", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#0D0D0D" },
   reactionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
   reactionEmoji: { fontSize: 20 },

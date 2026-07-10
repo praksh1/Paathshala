@@ -11,10 +11,23 @@ export interface ChatMessage {
   isMe: boolean;
 }
 
+export type DrawTool = "pen" | "line" | "arrow" | "circle" | "text";
+
 export interface DrawPath {
-  d: string;
+  tool: DrawTool;
   color: string;
   width: number;
+  d?: string;
+  x1?: number;
+  y1?: number;
+  x2?: number;
+  y2?: number;
+  cx?: number;
+  cy?: number;
+  r?: number;
+  text?: string;
+  x?: number;
+  y?: number;
 }
 
 export interface FloatingReaction {
@@ -58,7 +71,7 @@ interface Result {
   sessionStatus: string | null;
   sendChat: (text: string) => void;
   sendReaction: (emoji: string) => void;
-  sendDrawCommit: (d: string, color: string, width: number) => void;
+  sendDrawCommit: (shape: DrawPath) => void;
   sendBoardClear: () => void;
   sendMaterial: (dataUrl: string, kind: "image" | "pdf") => void;
   clearMaterial: () => void;
@@ -137,7 +150,22 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
         case "draw_commit":
           setRemotePaths((prev) => [
             ...prev,
-            { d: msg.d as string, color: msg.color as string, width: msg.width as number },
+            {
+              tool: (msg.tool as DrawTool) ?? "pen",
+              color: msg.color as string,
+              width: msg.width as number,
+              d: msg.d as string | undefined,
+              x1: msg.x1 as number | undefined,
+              y1: msg.y1 as number | undefined,
+              x2: msg.x2 as number | undefined,
+              y2: msg.y2 as number | undefined,
+              cx: msg.cx as number | undefined,
+              cy: msg.cy as number | undefined,
+              r: msg.r as number | undefined,
+              text: msg.text as string | undefined,
+              x: msg.x as number | undefined,
+              y: msg.y as number | undefined,
+            },
           ]);
           break;
         case "board_clear":
@@ -207,7 +235,7 @@ export function useClassroomSocket({ sessionId, name, role }: Options): Result {
   );
 
   const sendDrawCommit = useCallback(
-    (d: string, color: string, width: number) => send({ type: "draw_commit", d, color, width }),
+    (shape: DrawPath) => send({ type: "draw_commit", ...shape }),
     [send],
   );
 

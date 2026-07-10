@@ -85,7 +85,23 @@ export function attachClassroomHub(server: http.Server): void {
           break;
         case "draw_commit":
           if (role === "teacher")
-            broadcast(sessionId, { type: "draw_commit", d: msg.d, color: msg.color, width: msg.width }, ws);
+            broadcast(sessionId, {
+              type: "draw_commit",
+              tool: msg.tool,
+              d: msg.d,
+              color: msg.color,
+              width: msg.width,
+              x1: msg.x1,
+              y1: msg.y1,
+              x2: msg.x2,
+              y2: msg.y2,
+              cx: msg.cx,
+              cy: msg.cy,
+              r: msg.r,
+              text: msg.text,
+              x: msg.x,
+              y: msg.y,
+            }, ws);
           break;
         case "board_clear":
           if (role === "teacher") broadcast(sessionId, { type: "board_clear" }, ws);

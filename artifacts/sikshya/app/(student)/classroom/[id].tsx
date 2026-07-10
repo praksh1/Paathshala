@@ -15,12 +15,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Line, Circle, Text as SvgText, Polygon } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/context/AuthContext";
 import type { Student } from "@/context/AuthContext";
 import { apiGet } from "@/utils/api";
-import { useClassroomSocket } from "@/hooks/useClassroomSocket";
+import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
 import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import JitsiEmbed from "@/components/JitsiEmbed";
 import { Image } from "react-native";
@@ -32,6 +32,41 @@ const REACTION_EMOJIS = ["👍", "🙋", "❓", "😊", "🔥"];
 interface SessionData {
   id: number; topic: string; subject: string; teacherName: string;
   duration: number; maxStudents: number; enrolledCount: number; status: string;
+}
+
+function renderShape(p: DrawPath, i: number) {
+  switch (p.tool) {
+    case "line":
+      return <Line key={i} x1={p.x1} y1={p.y1} x2={p.x2} y2={p.y2} stroke={p.color} strokeWidth={p.width} strokeLinecap="round" />;
+    case "arrow": {
+      const x1 = p.x1 ?? 0, y1 = p.y1 ?? 0, x2 = p.x2 ?? 0, y2 = p.y2 ?? 0;
+      const angle = Math.atan2(y2 - y1, x2 - x1);
+      const headLen = Math.max(10, p.width * 3);
+      const p1x = x2 - headLen * Math.cos(angle - Math.PI / 7);
+      const p1y = y2 - headLen * Math.sin(angle - Math.PI / 7);
+      const p2x = x2 - headLen * Math.cos(angle + Math.PI / 7);
+      const p2y = y2 - headLen * Math.sin(angle + Math.PI / 7);
+      return (
+        <React.Fragment key={i}>
+          <Line x1={x1} y1={y1} x2={x2} y2={y2} stroke={p.color} strokeWidth={p.width} strokeLinecap="round" />
+          <Polygon points={`${x2},${y2} ${p1x},${p1y} ${p2x},${p2y}`} fill={p.color} />
+        </React.Fragment>
+      );
+    }
+    case "circle": {
+      const cx = p.cx ?? 0, cy = p.cy ?? 0, r = p.r ?? 0;
+      return <Circle key={i} cx={cx} cy={cy} r={r} stroke={p.color} strokeWidth={p.width} fill="none" />;
+    }
+    case "text":
+      return (
+        <SvgText key={i} x={p.x} y={p.y} fill={p.color} fontSize={Math.max(14, p.width * 6)} fontWeight="600">
+          {p.text}
+        </SvgText>
+      );
+    case "pen":
+    default:
+      return <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+  }
 }
 
 export default function StudentClassroom() {
@@ -182,9 +217,7 @@ export default function StudentClassroom() {
                 style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none", pointerEvents: "none" },
               })}
             <Svg style={StyleSheet.absoluteFill}>
-              {remotePaths.map((p, i) => (
-                <Path key={i} d={p.d} stroke={p.color} strokeWidth={p.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              ))}
+              {remotePaths.map((p, i) => renderShape(p, i))}
             </Svg>
             {remotePaths.length === 0 && !material && (
               <View style={s.boardEmpty}>
