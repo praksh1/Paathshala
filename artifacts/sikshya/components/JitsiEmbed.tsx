@@ -11,7 +11,8 @@ interface Props {
 const JITSI_DOMAIN = "meet.ffmuc.net";
 
 export default function JitsiEmbed({ roomName, displayName, style }: Props) {
-  const url = `https://${JITSI_DOMAIN}/${roomName}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.disableDeepLinking=true&userInfo.displayName=${encodeURIComponent(displayName)}`;
+  const safeRoomName = "ClassSession" + roomName.replace(/[^a-zA-Z0-9]/g, "");
+  const url = `https://${JITSI_DOMAIN}/${safeRoomName}#config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false&config.disableDeepLinking=true&userInfo.displayName=${encodeURIComponent(displayName)}`;
 
   return (
     <WebView

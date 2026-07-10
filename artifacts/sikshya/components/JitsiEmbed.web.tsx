@@ -45,18 +45,19 @@ function loadJitsiScript(): Promise<void> {
 export default function JitsiEmbed({ roomName, displayName, style }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const apiRef = useRef<any>(null);
+  const safeRoomName = "ClassSession" + roomName.replace(/[^a-zA-Z0-9]/g, "");
 
   useEffect(() => {
     let cancelled = false;
 
-    if (!roomName) return;
+    if (!safeRoomName) return;
 
     loadJitsiScript()
       .then(() => {
-        if (cancelled || !containerRef.current || !window.JitsiMeetExternalAPI || !roomName) return;
+        if (cancelled || !containerRef.current || !window.JitsiMeetExternalAPI || !safeRoomName) return;
 
         apiRef.current = new window.JitsiMeetExternalAPI(JITSI_DOMAIN, {
-          roomName,
+          roomName: safeRoomName,
           parentNode: containerRef.current,
           userInfo: { displayName },
           configOverwrite: {
@@ -79,7 +80,7 @@ export default function JitsiEmbed({ roomName, displayName, style }: Props) {
         apiRef.current = null;
       }
     };
-  }, [roomName, displayName]);
+  }, [safeRoomName, displayName]);
 
   const flat = (StyleSheet.flatten(style) as Record<string, unknown>) ?? {};
 
