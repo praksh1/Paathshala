@@ -1,0 +1,16 @@
+The app has several critical role-permission bugs, UI missing elements, and performance issues. To prevent token burnout and code looping, please implement these fixes in strict, isolated phases. Do not move to the next phase until the current one is fully applied.
+
+PHASE 1: Role Security & Database Sync
+1. Fix Student Permissions (View-Only): Inside the Classroom/Call component, implement strict role-based rendering. If the current user's role is 'student', completely hide the whiteboard toolbars, disable canvas drawing interactions, and hide the material upload button. Students must only see the synchronized canvas and video stream.
+2. Fix Duplicate Live Sessions: Update the database query that populates the student's 'Live Sessions' feed. Filter the query to ensure only one active session is returned per teacher. Fix the session teardown logic so that if a teacher creates a new session, any previous 'live' sessions by that same teacher are automatically set to `isLive = false`.
+
+PHASE 2: Whiteboard Tools & Material Upload
+1. Expose Upload Button: In the Teacher's active call view, permanently dock a highly visible "Upload Material (Image/PDF)" button directly above or next to the whiteboard canvas. 
+2. Modern Canvas Tools: Upgrade the existing canvas functionality to include a simple selection toolbar for the teacher. Include tools for: Freehand Pen, Straight Line, Arrow, Circle, and Text.
+3. Mobile Touch Support: Ensure the canvas explicitly handles native `touchstart`, `touchmove`, and `touchend` events so teachers can smoothly draw using a finger or stylus on iPads and mobile devices.
+
+PHASE 3: App Performance & Parity
+1. Improve Startup Time: Optimize the app's initial load speed. Implement lazy loading (e.g., `React.lazy`) for the heavy Classroom and Jitsi components so the login and home dashboard screens load instantly.
+2. Mobile & Web Parity: Review the CSS/styling for the Classroom view. Ensure both the web and mobile versions use strict Flexbox layouts so the whiteboard and video call proportions scale exactly the same regardless of the device.
+
+Please begin with PHASE 1. Secure the student permissions and clean up the database query for live sessions, then wait for my confirmation.

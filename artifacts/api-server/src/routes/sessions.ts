@@ -31,6 +31,21 @@ router.get("/sessions", async (req, res): Promise<void> => {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+  if (status === "live") {
+    const liveSessions = await db
+      .selectDistinctOn([sessionsTable.teacherId])
+      .from(sessionsTable)
+      .where(where)
+      .orderBy(sessionsTable.teacherId, desc(sessionsTable.date));
+
+    const sorted = liveSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const total = sorted.length;
+    const paged = sorted.slice(offset, offset + limitNum);
+
+    res.json({ sessions: paged, total, page: pageNum, limit: limitNum });
+    return;
+  }
+
   const [sessions, [{ total }]] = await Promise.all([
     db.select().from(sessionsTable).where(where).orderBy(desc(sessionsTable.date)).limit(limitNum).offset(offset),
     db.select({ total: sql<number>`count(*)::int` }).from(sessionsTable).where(where),
@@ -118,6 +133,22 @@ router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
   if (existing.teacherId !== user.userId) {
     res.status(403).json({ error: "You can only update your own sessions" });
     return;
+  }
+
+  if (status === "live") {
+    const staleLiveSessions = await db
+      .select({ id: sessionsTable.id })
+      .from(sessionsTable)
+      .where(and(eq(sessionsTable.teacherId, user.userId), eq(sessionsTable.status, "live"), sql`${sessionsTable.id} != ${id}`));
+
+    if (staleLiveSessions.length > 0) {
+      await db.update(sessionsTable).set({ status: "completed" }).where(
+        and(eq(sessionsTable.teacherId, user.userId), eq(sessionsTable.status, "live"), sql`${sessionsTable.id} != ${id}`)
+      );
+      for (const stale of staleLiveSessions) {
+        broadcastSessionStatus(String(stale.id), "completed");
+      }
+    }
   }
 
   const [session] = await db.update(sessionsTable).set(updates).where(eq(sessionsTable.id, id)).returning();
