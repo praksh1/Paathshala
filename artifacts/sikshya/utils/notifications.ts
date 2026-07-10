@@ -16,10 +16,20 @@ export interface AppNotification {
 
 export async function requestNotificationPermissions(): Promise<boolean> {
   if (Platform.OS === "web") return false;
-  const { status: existing } = await Notifications.getPermissionsAsync();
-  if (existing === "granted") return true;
-  const { status } = await Notifications.requestPermissionsAsync();
-  return status === "granted";
+  // A duplicated expo-modules-core version in the dependency tree makes the
+  // `NotificationPermissionsStatus` type returned here structurally mismatch its own
+  // declared shape (`status`/`granted` fields are typed as never-accessible), even though
+  // the values exist at runtime. Cast through `unknown` to read the fields safely.
+  const existing = (await Notifications.getPermissionsAsync()) as unknown as {
+    status: string;
+    granted: boolean;
+  };
+  if (existing.granted || existing.status === "granted") return true;
+  const requested = (await Notifications.requestPermissionsAsync()) as unknown as {
+    status: string;
+    granted: boolean;
+  };
+  return requested.granted || requested.status === "granted";
 }
 
 export async function scheduleSessionReminder(session: {

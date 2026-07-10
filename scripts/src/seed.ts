@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "../../lib/db/src/schema/index.js";
+import * as schema from "@workspace/db/schema";
 import { sql } from "drizzle-orm";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

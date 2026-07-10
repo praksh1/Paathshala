@@ -56,6 +56,7 @@
     "zod-validation-error": "^3.4.0"
   },
   "dependencies": {
+    "@react-navigation/native": "7.2.5",
     "expo-av": "^16.0.8",
     "expo-camera": "^17.0.10",
     "expo-document-picker": "^56.0.4",
