@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { db, sessionsTable, sessionEnrollmentsTable, teacherProfilesTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/requireAuth";
-import { broadcastSessionStatus } from "../ws/classroomHub";
+import { broadcastSessionStatus, resetRoomPresence } from "../ws/classroomHub";
 
 const router: IRouter = Router();
 
@@ -186,6 +186,11 @@ router.patch("/sessions/:id", requireAuth, async (req, res): Promise<void> => {
         broadcastSessionStatus(String(stale.id), "completed");
       }
     }
+
+    // Force-clear any stale/"ghost" presence left over from a previous run of this same
+    // session (e.g. a connection that never closed cleanly) so the participant count
+    // reads exactly 0 the moment the teacher starts the class.
+    resetRoomPresence(String(id));
   }
 
   const [session] = await db.update(sessionsTable).set(updates).where(eq(sessionsTable.id, id)).returning();

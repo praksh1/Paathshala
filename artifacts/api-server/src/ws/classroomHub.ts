@@ -27,6 +27,28 @@ export function broadcastSessionStatus(sessionId: string, status: string): void 
   broadcast(String(sessionId), { type: "session_status", status });
 }
 
+/**
+ * Clears all tracked presence (in-memory room clients) for a session. Presence has no
+ * DB-backed table — it's tracked purely in the `rooms` map for the lifetime of open
+ * WebSocket connections — so "ghost" participants are stale entries left behind by
+ * connections that didn't close cleanly (e.g. dev hot-reload, app backgrounding). Called
+ * when a teacher (re)starts a session so the participant count is guaranteed to read 0
+ * at the moment the class begins, regardless of leftover state from a previous run.
+ */
+export function resetRoomPresence(sessionId: string): void {
+  const room = rooms.get(String(sessionId));
+  if (!room) return;
+  for (const client of room) {
+    try {
+      client.ws.close(4000, "Session restarted");
+    } catch {
+      // ignore
+    }
+  }
+  rooms.delete(String(sessionId));
+  broadcast(String(sessionId), { type: "presence", count: 0 });
+}
+
 export function attachClassroomHub(server: http.Server): void {
   const wss = new WebSocketServer({ noServer: true });
 
