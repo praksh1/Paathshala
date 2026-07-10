@@ -26,7 +26,7 @@ import JitsiEmbed from "@/components/JitsiEmbed";
 import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
-type Mode = "board" | "chat" | "call";
+type Mode = "board" | "chat";
 const REACTION_EMOJIS = ["👍", "🙋", "❓", "😊", "🔥"];
 
 interface SessionData {
@@ -87,6 +87,7 @@ export default function StudentClassroom() {
   const [elapsed, setElapsed] = useState(0);
   const [chatMsg, setChatMsg] = useState("");
   const [mode, setMode] = useState<Mode>("board");
+  const [videoExpanded, setVideoExpanded] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -193,18 +194,27 @@ export default function StudentClassroom() {
 
         {/* Mode tabs */}
         <View style={s.modeSwitcher}>
-          {(["board", "chat", "call"] as Mode[]).map((m) => (
+          {(["board", "chat"] as Mode[]).map((m) => (
             <TouchableOpacity key={m} style={[s.modeTab, mode === m && s.modeTabActive]} onPress={() => setMode(m)} activeOpacity={0.7}>
-              <Feather name={m === "board" ? "monitor" : m === "chat" ? "message-circle" : "phone"} size={13} color={mode === m ? "#fff" : "#666"} />
+              <Feather name={m === "board" ? "monitor" : "message-circle"} size={13} color={mode === m ? "#fff" : "#666"} />
               <Text style={[s.modeText, mode === m && s.modeTextActive]}>
-                {m === "board" ? "Whiteboard" : m === "chat" ? `Chat${messages.length > 0 ? ` (${messages.length})` : ""}` : "Call"}
+                {m === "board" ? "Whiteboard" : `Chat${messages.length > 0 ? ` (${messages.length})` : ""}`}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Content area — board/chat switch, call is a persistent overlay */}
+        {/* Content area — unified flexbox: video feed confined on top, board/chat on bottom.
+            Video is persistently mounted so it never reconnects when switching tabs. */}
         <View style={s.contentArea}>
+        <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded]}>
+          <JitsiEmbed roomName={roomName} displayName={studentName} style={StyleSheet.absoluteFill} />
+          <TouchableOpacity style={s.videoExpandBtn} onPress={() => setVideoExpanded((v) => !v)} activeOpacity={0.8}>
+            <Feather name={videoExpanded ? "minimize-2" : "maximize-2"} size={13} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        {!videoExpanded && (
+        <View style={s.boardWrap}>
         {/* Board — live whiteboard from teacher */}
         {mode === "board" && (
           <View style={s.boardArea}>
@@ -269,17 +279,8 @@ export default function StudentClassroom() {
             </View>
           </View>
         )}
-
-        {/* Call — persistently mounted so it never reconnects when switching tabs.
-            Shown fullscreen on the Call tab, or as a floating PiP over the whiteboard otherwise. */}
-        <View style={mode === "call" ? s.jitsiFull : s.jitsiPip} pointerEvents="box-none">
-          <JitsiEmbed roomName={roomName} displayName={studentName} style={StyleSheet.absoluteFill} />
-          {mode !== "call" && (
-            <TouchableOpacity style={s.pipExpand} onPress={() => setMode("call")} activeOpacity={0.8}>
-              <Feather name="maximize-2" size={12} color="#fff" />
-            </TouchableOpacity>
-          )}
         </View>
+        )}
         </View>
 
         {/* Floating reactions */}
@@ -351,16 +352,15 @@ const s = StyleSheet.create({
   inputRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14, paddingTop: 8, borderTopWidth: 1, borderTopColor: "#1A1A1A" },
   input: { flex: 1, backgroundColor: "#1A1A1A", borderRadius: 24, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, fontFamily: "Inter_400Regular", color: "#fff" },
   sendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#C41E3A", justifyContent: "center", alignItems: "center" },
-  contentArea: { flex: 1, position: "relative" },
-  jitsiFull: { ...StyleSheet.absoluteFillObject, backgroundColor: "#000", zIndex: 30 },
-  jitsiPip: {
-    position: "absolute", bottom: 14, right: 14, width: 118, height: 158,
-    borderRadius: 14, overflow: "hidden", backgroundColor: "#000",
-    borderWidth: 2, borderColor: "#2A2A2A", zIndex: 20,
-    shadowColor: "#000", shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 8,
+  contentArea: { flex: 1, flexDirection: "column" },
+  videoArea: {
+    flex: 1, backgroundColor: "#000", position: "relative",
+    overflow: "hidden", borderBottomWidth: 1, borderBottomColor: "#1A1A1A",
   },
-  pipExpand: {
-    position: "absolute", top: 5, right: 5, width: 22, height: 22, borderRadius: 11,
-    backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center",
+  videoAreaExpanded: { flex: 1 },
+  boardWrap: { flex: 1, overflow: "hidden" },
+  videoExpandBtn: {
+    position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", zIndex: 5,
   },
 });
