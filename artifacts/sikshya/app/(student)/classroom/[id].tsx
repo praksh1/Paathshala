@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Dimensions,
   KeyboardAvoidingView,
   Platform,
@@ -22,13 +21,11 @@ import { useAuth } from "@/context/AuthContext";
 import type { Student } from "@/context/AuthContext";
 import { apiGet } from "@/utils/api";
 import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
-import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import DailyEmbed from "@/components/DailyEmbed";
 import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
 type Mode = "board" | "chat";
-const REACTION_EMOJIS = ["👍", "🙋", "❓", "😊", "🔥"];
 
 interface SessionData {
   id: number; topic: string; subject: string; teacherName: string;
@@ -79,10 +76,8 @@ export default function StudentClassroom() {
 
   const studentName = student.name ?? "Student";
 
-  const { connected, presenceCount, messages, remotePaths, floatingReactions, material, sessionStatus, sendChat, sendReaction } =
+  const { connected, presenceCount, messages, remotePaths, material, sessionStatus, sendChat } =
     useClassroomSocket({ sessionId: id ?? "", name: studentName, role: "student" });
-
-  const mediaPermissionState = useMediaPermissions();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -240,7 +235,7 @@ export default function StudentClassroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          {mediaPermissionState === "granted" && roomUrl ? (
+          {roomUrl ? (
             <DailyEmbed
               roomUrl={roomUrl}
               displayName={studentName}
@@ -252,13 +247,7 @@ export default function StudentClassroom() {
             <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
               <ActivityIndicator color="#fff" />
               <Text style={s.permissionGateText}>
-                {roomError
-                  ? "Couldn't set up the video room. Pull to retry."
-                  : mediaPermissionState === "denied"
-                  ? "Camera & microphone access is required to join the live class."
-                  : mediaPermissionState !== "granted"
-                  ? "Requesting camera & microphone access…"
-                  : "Setting up video room…"}
+                {roomError ? "Couldn't set up the video room." : "Setting up video room…"}
               </Text>
             </View>
           )}
@@ -289,14 +278,6 @@ export default function StudentClassroom() {
                 <Text style={s.boardEmptySub}>Content will appear here as the teacher draws.</Text>
               </View>
             )}
-            {/* Reactions bar */}
-            <View style={s.reactionsBarAbs}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={s.reactionBtn} onPress={() => sendReaction(emoji)} activeOpacity={0.7}>
-                  <Text style={s.reactionEmoji}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           </View>
         )}
 
@@ -318,13 +299,6 @@ export default function StudentClassroom() {
                 </View>
               ))}
             </ScrollView>
-            <View style={s.reactionsBar}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={s.reactionBtn} onPress={() => sendReaction(emoji)} activeOpacity={0.7}>
-                  <Text style={s.reactionEmoji}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
             <View style={[s.inputRow, { paddingBottom: insets.bottom + 8 }]}>
               <TextInput style={s.input} value={chatMsg} onChangeText={setChatMsg} placeholder="Ask the teacher…" placeholderTextColor="#555" onSubmitEditing={sendMessage} returnKeyType="send" />
               <TouchableOpacity style={s.sendBtn} onPress={sendMessage} activeOpacity={0.8}>
@@ -337,25 +311,6 @@ export default function StudentClassroom() {
         )}
         </View>
 
-        {/* Floating reactions */}
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          {floatingReactions.map((r) => (
-            <Animated.View
-              key={r.id}
-              style={{
-                position: "absolute",
-                bottom: 160,
-                left: r.x * SCREEN_W,
-                opacity: r.opacity,
-                transform: [{ translateY: r.translateY }],
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ fontSize: 32 }}>{r.emoji}</Text>
-              <Text style={{ fontSize: 10, color: "#ccc" }}>{r.senderName}</Text>
-            </Animated.View>
-          ))}
-        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -391,10 +346,6 @@ const s = StyleSheet.create({
   boardEmpty: { flex: 1, justifyContent: "center", alignItems: "center", padding: 30, gap: 12 },
   boardEmptyTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold", color: "#222", textAlign: "center" },
   boardEmptySub: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#777", textAlign: "center", lineHeight: 20 },
-  reactionsBarAbs: { position: "absolute", bottom: 0, left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 8, paddingVertical: 8, backgroundColor: "rgba(0,0,0,0.15)" },
-  reactionsBar: { flexDirection: "row", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#0D0D0D" },
-  reactionBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
-  reactionEmoji: { fontSize: 19 },
   chatContent: { padding: 14, gap: 10 },
   emptyChat: { textAlign: "center", color: "#555", fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 40 },
   bubble: { maxWidth: "80%", gap: 3 },

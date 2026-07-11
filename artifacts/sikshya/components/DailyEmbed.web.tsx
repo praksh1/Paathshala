@@ -1,3 +1,4 @@
+import DailyIframe from "@daily-co/daily-js";
 import React, { useEffect, useRef } from "react";
 import { StyleSheet } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
@@ -6,101 +7,71 @@ interface Props {
   roomUrl: string;
   displayName: string;
   style?: StyleProp<ViewStyle>;
-  /** If set, fires `onWatchedParticipantLeft` when a remote participant with this
-   * display name leaves the call — used to notify students if the teacher drops. */
   watchUserName?: string;
   onWatchedParticipantLeft?: () => void;
 }
 
-declare global {
-  interface Window {
-    DailyIframe?: any;
-  }
-}
-
-const DAILY_SCRIPT_SRC = "https://unpkg.com/@daily-co/daily-js";
-
-let scriptLoadPromise: Promise<void> | null = null;
-
-function loadDailyScript(): Promise<void> {
-  if (typeof window === "undefined") return Promise.resolve();
-  if (window.DailyIframe) return Promise.resolve();
-  if (scriptLoadPromise) return scriptLoadPromise;
-
-  scriptLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${DAILY_SCRIPT_SRC}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () => reject(new Error("Failed to load Daily.co script")));
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = DAILY_SCRIPT_SRC;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Daily.co script"));
-    document.body.appendChild(script);
-  });
-
-  return scriptLoadPromise;
-}
-
-export default function DailyEmbed({ roomUrl, displayName, style, watchUserName, onWatchedParticipantLeft }: Props) {
+export default function DailyEmbed({
+  roomUrl,
+  displayName,
+  style,
+  watchUserName,
+  onWatchedParticipantLeft,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const callFrameRef = useRef<any>(null);
+  const callFrameRef = useRef<ReturnType<typeof DailyIframe.createFrame> | null>(null);
+
+  const watchRef = useRef({ watchUserName, onWatchedParticipantLeft });
+  watchRef.current = { watchUserName, onWatchedParticipantLeft };
 
   useEffect(() => {
-    let cancelled = false;
+    if (!roomUrl || !containerRef.current) return;
 
-    if (!roomUrl) return;
+    const callFrame = DailyIframe.createFrame(containerRef.current, {
+      iframeStyle: { width: "100%", height: "100%", border: "0" },
+      showLeaveButton: false,
+      showFullscreenButton: true,
+    });
 
-    loadDailyScript()
-      .then(() => {
-        if (cancelled || !containerRef.current || !window.DailyIframe) return;
+    // Explicitly set the allow attribute on the underlying iframe element so that
+    // iOS Safari grants camera/mic/autoplay permissions without showing an infinite
+    // permission-request loop — without this attribute the Permissions Policy blocks
+    // getUserMedia inside the cross-origin Daily iframe entirely.
+    const iframe = callFrame.iframe();
+    if (iframe) {
+      iframe.allow = "camera; microphone; autoplay; display-capture";
+    }
 
-        const callFrame = window.DailyIframe.createFrame(containerRef.current, {
-          iframeStyle: { width: "100%", height: "100%", border: "0" },
-          showLeaveButton: false,
-          showFullscreenButton: true,
-        });
-        callFrameRef.current = callFrame;
+    callFrameRef.current = callFrame;
 
-        callFrame.on("participant-left", (event: any) => {
-          const leftName = event?.participant?.user_name;
-          if (watchUserName && leftName === watchUserName) {
-            onWatchedParticipantLeft?.();
-          }
-        });
+    callFrame.on("participant-left", (event: any) => {
+      const leftName = event?.participant?.user_name;
+      const { watchUserName: watched, onWatchedParticipantLeft: cb } = watchRef.current;
+      if (watched && leftName === watched) cb?.();
+    });
 
-        callFrame.join({ url: roomUrl, userName: displayName }).catch((err: unknown) => {
-          console.error("Daily.co join failed", err);
-        });
-      })
-      .catch((err) => {
-        console.error("Daily.co failed to load", err);
+    callFrame
+      .join({ url: roomUrl, userName: displayName })
+      .catch((err: unknown) => {
+        console.error("[DailyEmbed] join failed", err);
       });
 
     return () => {
-      cancelled = true;
-      if (callFrameRef.current) {
-        callFrameRef.current.destroy();
-        callFrameRef.current = null;
-      }
+      callFrame.destroy();
+      callFrameRef.current = null;
     };
-  }, [roomUrl, displayName, watchUserName, onWatchedParticipantLeft]);
+  }, [roomUrl, displayName]);
 
   const flat = (StyleSheet.flatten(style) as Record<string, unknown>) ?? {};
 
   return React.createElement("div", {
     ref: containerRef,
     style: {
-      border: "none",
       width: "100%",
       height: "100%",
+      border: "none",
       position: "relative",
       overflow: "hidden",
-      contain: "layout style paint",
-      isolation: "isolate",
       ...flat,
     },
   });

@@ -6,7 +6,6 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   Dimensions,
   KeyboardAvoidingView,
   Modal,
@@ -27,7 +26,6 @@ import { useAuth } from "@/context/AuthContext";
 import type { Teacher } from "@/context/AuthContext";
 import { apiGet, apiPatch } from "@/utils/api";
 import { useClassroomSocket, type DrawPath, type DrawTool } from "@/hooks/useClassroomSocket";
-import { useMediaPermissions } from "@/hooks/useMediaPermissions";
 import DailyEmbed from "@/components/DailyEmbed";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -38,7 +36,6 @@ type Mode = "whiteboard" | "participants" | "chat";
 
 const COLORS_PALETTE = ["#0D0D0D", "#C41E3A", "#1A365D", "#16A34A", "#F5A623", "#8B5CF6", "#FFFFFF"];
 const PEN_SIZES = [3, 6, 10];
-const REACTION_EMOJIS = ["👍", "🙋", "❓", "😊", "🔥"];
 
 const TOOLS: { id: DrawTool; icon: keyof typeof Feather.glyphMap; label: string }[] = [
   { id: "pen", icon: "edit-3", label: "Pen" },
@@ -159,10 +156,8 @@ export default function Classroom() {
 
   const teacherName = teacher.name ?? "Teacher";
 
-  const { connected, presenceCount, messages, floatingReactions, material, sendChat, sendReaction, sendDrawCommit, sendBoardClear, sendMaterial, clearMaterial } =
+  const { connected, presenceCount, messages, material, sendChat, sendDrawCommit, sendBoardClear, sendMaterial, clearMaterial } =
     useClassroomSocket({ sessionId: id ?? "", name: teacherName, role: "teacher" });
-
-  const mediaPermissionState = useMediaPermissions();
 
   const [session, setSession] = useState<SessionData | null>(null);
   const [mode, setMode] = useState<Mode>("whiteboard");
@@ -545,19 +540,13 @@ export default function Classroom() {
             floats above all DOM content regardless of z-index, so removing it from layout
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
-          {mediaPermissionState === "granted" && roomUrl ? (
+          {roomUrl ? (
             <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} />
           ) : (
             <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
               <ActivityIndicator color="#fff" />
               <Text style={s.permissionGateText}>
-                {roomError
-                  ? "Couldn't set up the video room. Pull to retry."
-                  : mediaPermissionState === "denied"
-                  ? "Camera & microphone access is required to start the live class."
-                  : mediaPermissionState !== "granted"
-                  ? "Requesting camera & microphone access…"
-                  : "Setting up video room…"}
+                {roomError ? "Couldn't set up the video room." : "Setting up video room…"}
               </Text>
             </View>
           )}
@@ -697,14 +686,6 @@ export default function Classroom() {
                 </ScrollView>
               </View>
             </View>
-            {/* Reactions bar on whiteboard */}
-            <View style={s.reactionsBar}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={s.reactionBtn} onPress={() => sendReaction(emoji)} activeOpacity={0.7}>
-                  <Text style={s.reactionEmoji}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
           </View>
         )}
 
@@ -773,13 +754,6 @@ export default function Classroom() {
                 </View>
               ))}
             </ScrollView>
-            <View style={s.reactionsBar}>
-              {REACTION_EMOJIS.map((emoji) => (
-                <TouchableOpacity key={emoji} style={s.reactionBtn} onPress={() => sendReaction(emoji)} activeOpacity={0.7}>
-                  <Text style={s.reactionEmoji}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
             <View style={[s.chatInputRow, { paddingBottom: insets.bottom + 8 }]}>
               <TextInput style={s.chatInputField} value={chatMsg} onChangeText={setChatMsg} placeholder="Message students..." placeholderTextColor="#555" onSubmitEditing={sendMessage} returnKeyType="send" testID="chat-input" />
               <TouchableOpacity style={[s.sendBtn, { backgroundColor: colors.primary }]} onPress={sendMessage} activeOpacity={0.8}>
@@ -792,25 +766,6 @@ export default function Classroom() {
         )}
         </View>
 
-        {/* Floating reactions overlay */}
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          {floatingReactions.map((r) => (
-            <Animated.View
-              key={r.id}
-              style={{
-                position: "absolute",
-                bottom: 200,
-                left: r.x * SCREEN_W,
-                opacity: r.opacity,
-                transform: [{ translateY: r.translateY }],
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ fontSize: 34 }}>{r.emoji}</Text>
-              <Text style={{ fontSize: 10, color: "#ccc" }}>{r.senderName}</Text>
-            </Animated.View>
-          ))}
-        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -876,9 +831,6 @@ const s = StyleSheet.create({
   textModalCancelText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#999" },
   textModalConfirm: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 10 },
   textModalConfirmText: { fontSize: 13, fontFamily: "Inter_600SemiBold", color: "#fff" },
-  reactionsBar: { flexDirection: "row", justifyContent: "center", gap: 8, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "#0D0D0D" },
-  reactionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#1A1A1A", justifyContent: "center", alignItems: "center" },
-  reactionEmoji: { fontSize: 20 },
   participantGrid: { flexDirection: "row", flexWrap: "wrap", padding: 16, gap: 12, justifyContent: "center" },
   participantCard: { width: (SCREEN_W - 64) / 3, alignItems: "center", gap: 6 },
   bigAvatar: { width: 76, height: 76, borderRadius: 12, justifyContent: "center", alignItems: "center", overflow: "hidden" },
