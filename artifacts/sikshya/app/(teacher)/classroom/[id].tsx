@@ -30,6 +30,7 @@ import DailyEmbed from "@/components/DailyEmbed";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "react-native";
+import { WebView } from "react-native-webview";
 
 const SCREEN_W = Dimensions.get("window").width;
 type Mode = "whiteboard" | "participants" | "chat";
@@ -85,62 +86,6 @@ interface SessionData {
   duration: number; maxStudents: number; enrolledCount: number; status: string;
 }
 
-const PDFJS_VERSION = "3.11.174";
-const PDFJS_SCRIPT_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.min.js`;
-const PDFJS_WORKER_SRC = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}/pdf.worker.min.js`;
-
-let pdfJsLoadPromise: Promise<any> | null = null;
-
-function loadPdfJs(): Promise<any> {
-  if (typeof window === "undefined") return Promise.reject(new Error("PDF rendering requires a browser"));
-  const w = window as any;
-  if (w.pdfjsLib) return Promise.resolve(w.pdfjsLib);
-  if (pdfJsLoadPromise) return pdfJsLoadPromise;
-
-  pdfJsLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${PDFJS_SCRIPT_SRC}"]`);
-    const onReady = () => {
-      const lib = (window as any).pdfjsLib;
-      if (!lib) { reject(new Error("pdf.js failed to initialize")); return; }
-      lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
-      resolve(lib);
-    };
-    if (existing) {
-      existing.addEventListener("load", onReady);
-      existing.addEventListener("error", () => reject(new Error("Failed to load pdf.js")));
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = PDFJS_SCRIPT_SRC;
-    script.async = true;
-    script.onload = onReady;
-    script.onerror = () => reject(new Error("Failed to load pdf.js"));
-    document.body.appendChild(script);
-  });
-
-  return pdfJsLoadPromise;
-}
-
-// Mobile browsers cannot draw PDFs directly onto a canvas, so we rasterize the
-// first page of the PDF into a PNG via pdf.js and treat it like a normal image material.
-async function renderPdfFirstPageToImage(dataUrl: string): Promise<string> {
-  const pdfjsLib = await loadPdfJs();
-  const base64 = dataUrl.split(",")[1] ?? "";
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 2 });
-  const canvas = document.createElement("canvas");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas 2D context unavailable");
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  return canvas.toDataURL("image/png");
-}
 
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 3;
@@ -178,6 +123,10 @@ export default function Classroom() {
   const [isLandscape, setIsLandscape] = useState(false);
   const [videoExpanded, setVideoExpanded] = useState(false);
   const [zoom, setZoom] = useState(1);
+  // Native-only: stores a local file:// URI for a PDF picked via DocumentPicker.
+  // Kept separate from `material` (which is broadcast over the socket) because
+  // file:// paths are device-local and meaningless on other participants' devices.
+  const [localPdfUri, setLocalPdfUri] = useState<string | null>(null);
   const [roomUrl, setRoomUrl] = useState<string | null>(null);
   const [roomError, setRoomError] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -337,20 +286,20 @@ export default function Classroom() {
     sendBoardClear();
   };
 
-  const PDF_ALERT_MSG = "For best performance, please upload materials as an image (JPG/PNG).";
-
-  const applyUploadedFile = async (dataUrl: string, kind: "image" | "pdf") => {
+  const applyUploadedFile = (dataUrl: string, kind: "image" | "pdf") => {
     if (kind === "pdf") {
       if (Platform.OS === "web") {
-        try {
-          const imageDataUrl = await renderPdfFirstPageToImage(dataUrl);
-          sendMaterial(imageDataUrl, "image");
-        } catch {
-          window.alert(PDF_ALERT_MSG);
-        }
-        return;
+        // On web: the dataUrl is a full base64 data URI. Feed it straight to an
+        // <iframe> via the socket so all web participants see it in the browser's
+        // native PDF renderer — no pdf.js canvas rasterization, no off-screen
+        // canvas allocation, no memory pressure on the mobile main thread.
+        sendMaterial(dataUrl, "pdf");
+      } else {
+        // On native: dataUrl is a device-local file:// URI from DocumentPicker.
+        // Show it locally in a WebView; don't broadcast since file paths are
+        // meaningless on other participants' devices.
+        setLocalPdfUri(dataUrl);
       }
-      Alert.alert("Unsupported File", PDF_ALERT_MSG);
       return;
     }
     sendMaterial(dataUrl, kind);
@@ -630,69 +579,105 @@ export default function Classroom() {
                   </TouchableOpacity>
                 </>
               )}
-              {material && (
-                <TouchableOpacity style={s.uploadDockClear} onPress={clearMaterial} activeOpacity={0.7}>
+              {(material || localPdfUri) && (
+                <TouchableOpacity
+                  style={s.uploadDockClear}
+                  onPress={() => { clearMaterial(); setLocalPdfUri(null); }}
+                  activeOpacity={0.7}
+                >
                   <Feather name="x-circle" size={18} color="#EF4444" />
                 </TouchableOpacity>
               )}
             </View>
 
             <View style={s.canvasScrollWrap}>
-              <View
-                ref={canvasRef}
-                style={[s.canvas, { transform: [{ scale: zoom }] }]}
-                {...panResponder.panHandlers}
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onTouchEnd={onTouchEnd}
-              >
-                {material?.kind === "image" && (
-                  <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
-                )}
-                <Svg style={StyleSheet.absoluteFill}>
-                  {paths.map((p, i) => renderShape(p, i))}
-                  {currentPath ? (
-                    <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                  ) : null}
-                  {previewShape ? renderShape(previewShape, -1) : null}
-                </Svg>
-              </View>
+              {/* PDF mode: render the document in the platform's native PDF viewer.
+                  No pdf.js, no off-screen canvas allocation, no main-thread rasterization.
+                  - Web: <iframe> — Chrome/Safari's built-in PDF plugin renders it.
+                  - Native: WebView with the local file:// URI picked by DocumentPicker. */}
+              {(material?.kind === "pdf" || localPdfUri !== null) ? (
+                Platform.OS === "web" && material?.kind === "pdf" ? (
+                  React.createElement("iframe", {
+                    src: material.dataUrl,
+                    title: "PDF document",
+                    style: {
+                      position: "absolute",
+                      top: 0, left: 0,
+                      width: "100%", height: "100%",
+                      border: "none",
+                      borderRadius: 12,
+                    },
+                  })
+                ) : localPdfUri !== null ? (
+                  <WebView
+                    source={{ uri: localPdfUri }}
+                    style={StyleSheet.absoluteFill}
+                    originWhitelist={["*"]}
+                    allowFileAccess
+                    javaScriptEnabled={false}
+                  />
+                ) : null
+              ) : (
+                /* Drawing canvas — shown when material is an image overlay or board is blank */
+                <>
+                  <View
+                    ref={canvasRef}
+                    style={[s.canvas, { transform: [{ scale: zoom }] }]}
+                    {...panResponder.panHandlers}
+                    onTouchStart={onTouchStart}
+                    onTouchMove={onTouchMove}
+                    onTouchEnd={onTouchEnd}
+                  >
+                    {material?.kind === "image" && (
+                      <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+                    )}
+                    <Svg style={StyleSheet.absoluteFill}>
+                      {paths.map((p, i) => renderShape(p, i))}
+                      {currentPath ? (
+                        <Path d={currentPath} stroke={isEraser ? "#FFFFFF" : penColor} strokeWidth={isEraser ? 24 : penSize} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                      ) : null}
+                      {previewShape ? renderShape(previewShape, -1) : null}
+                    </Svg>
+                  </View>
 
-              {/* Floating "island" toolbar — modern Miro/Freeform-style pill overlay */}
-              <View style={s.island} pointerEvents="box-none">
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.islandInner}>
-                  {TOOLS.map((t) => (
-                    <TouchableOpacity key={t.id} style={[s.islandBtn, tool === t.id && { backgroundColor: colors.primary }]} onPress={() => setTool(t.id)} activeOpacity={0.7}>
-                      <Feather name={t.icon} size={16} color={tool === t.id ? "#fff" : "#333"} />
-                    </TouchableOpacity>
-                  ))}
-                  <View style={s.islandDivider} />
-                  {COLORS_PALETTE.map((c) => (
-                    <TouchableOpacity key={c} style={[s.islandColorDot, { backgroundColor: c, borderColor: c === "#FFFFFF" ? "#CCC" : c, borderWidth: penColor === c && !isEraser ? 3 : 1, transform: [{ scale: penColor === c && !isEraser ? 1.15 : 1 }] }]} onPress={() => { setPenColor(c); setIsEraser(false); }} activeOpacity={0.7} />
-                  ))}
-                  <View style={s.islandDivider} />
-                  {PEN_SIZES.map((sz) => (
-                    <TouchableOpacity key={sz} style={[s.islandBtn, penSize === sz && !isEraser && { borderColor: colors.primary, borderWidth: 1.5 }]} onPress={() => { setPenSize(sz); setIsEraser(false); }} activeOpacity={0.7}>
-                      <View style={{ width: sz * 1.6, height: sz * 1.6, borderRadius: sz, backgroundColor: "#333" }} />
-                    </TouchableOpacity>
-                  ))}
-                  <View style={s.islandDivider} />
-                  <TouchableOpacity style={[s.islandBtn, isEraser && { backgroundColor: "#EDEDED" }]} onPress={() => setIsEraser(!isEraser)} activeOpacity={0.7}>
-                    <Feather name="delete" size={16} color="#333" />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={s.islandBtn} onPress={clearBoard} activeOpacity={0.7}>
-                    <Feather name="trash-2" size={16} color="#333" />
-                  </TouchableOpacity>
-                  <View style={s.islandDivider} />
-                  <TouchableOpacity style={s.islandBtn} onPress={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))} activeOpacity={0.7}>
-                    <Feather name="zoom-out" size={16} color="#333" />
-                  </TouchableOpacity>
-                  <Text style={s.islandZoomText}>{Math.round(zoom * 100)}%</Text>
-                  <TouchableOpacity style={s.islandBtn} onPress={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))} activeOpacity={0.7}>
-                    <Feather name="zoom-in" size={16} color="#333" />
-                  </TouchableOpacity>
-                </ScrollView>
-              </View>
+                  {/* Floating "island" toolbar — modern Miro/Freeform-style pill overlay.
+                      Hidden in PDF mode since drawing on top of a document isn't supported. */}
+                  <View style={s.island} pointerEvents="box-none">
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.islandInner}>
+                      {TOOLS.map((t) => (
+                        <TouchableOpacity key={t.id} style={[s.islandBtn, tool === t.id && { backgroundColor: colors.primary }]} onPress={() => setTool(t.id)} activeOpacity={0.7}>
+                          <Feather name={t.icon} size={16} color={tool === t.id ? "#fff" : "#333"} />
+                        </TouchableOpacity>
+                      ))}
+                      <View style={s.islandDivider} />
+                      {COLORS_PALETTE.map((c) => (
+                        <TouchableOpacity key={c} style={[s.islandColorDot, { backgroundColor: c, borderColor: c === "#FFFFFF" ? "#CCC" : c, borderWidth: penColor === c && !isEraser ? 3 : 1, transform: [{ scale: penColor === c && !isEraser ? 1.15 : 1 }] }]} onPress={() => { setPenColor(c); setIsEraser(false); }} activeOpacity={0.7} />
+                      ))}
+                      <View style={s.islandDivider} />
+                      {PEN_SIZES.map((sz) => (
+                        <TouchableOpacity key={sz} style={[s.islandBtn, penSize === sz && !isEraser && { borderColor: colors.primary, borderWidth: 1.5 }]} onPress={() => { setPenSize(sz); setIsEraser(false); }} activeOpacity={0.7}>
+                          <View style={{ width: sz * 1.6, height: sz * 1.6, borderRadius: sz, backgroundColor: "#333" }} />
+                        </TouchableOpacity>
+                      ))}
+                      <View style={s.islandDivider} />
+                      <TouchableOpacity style={[s.islandBtn, isEraser && { backgroundColor: "#EDEDED" }]} onPress={() => setIsEraser(!isEraser)} activeOpacity={0.7}>
+                        <Feather name="delete" size={16} color="#333" />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={s.islandBtn} onPress={clearBoard} activeOpacity={0.7}>
+                        <Feather name="trash-2" size={16} color="#333" />
+                      </TouchableOpacity>
+                      <View style={s.islandDivider} />
+                      <TouchableOpacity style={s.islandBtn} onPress={() => setZoom((z) => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2)))} activeOpacity={0.7}>
+                        <Feather name="zoom-out" size={16} color="#333" />
+                      </TouchableOpacity>
+                      <Text style={s.islandZoomText}>{Math.round(zoom * 100)}%</Text>
+                      <TouchableOpacity style={s.islandBtn} onPress={() => setZoom((z) => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2)))} activeOpacity={0.7}>
+                        <Feather name="zoom-in" size={16} color="#333" />
+                      </TouchableOpacity>
+                    </ScrollView>
+                  </View>
+                </>
+              )}
             </View>
           </View>
         )}

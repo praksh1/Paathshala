@@ -270,11 +270,19 @@ export default function StudentClassroom() {
             {material?.kind === "image" && (
               <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
             )}
-            {material?.kind === "pdf" && Platform.OS === "web" &&
-              React.createElement("iframe", {
-                src: material.dataUrl,
-                style: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none", pointerEvents: "none" },
-              })}
+            {material?.kind === "pdf" && (
+              Platform.OS === "web"
+                ? React.createElement("iframe", {
+                    src: material.dataUrl,
+                    title: "Shared PDF",
+                    style: {
+                      position: "absolute", top: 0, left: 0,
+                      width: "100%", height: "100%",
+                      border: "none",
+                    },
+                  })
+                : null
+            )}
             <Svg style={StyleSheet.absoluteFill}>
               {remotePaths.map((p, i) => renderShape(p, i))}
             </Svg>
