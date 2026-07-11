@@ -3,17 +3,13 @@ import React, { useEffect, useRef, useState } from "react";
 interface Props {
   roomUrl: string;
   displayName: string;
-  /** Called the instant the local user exits the Daily call. */
   onLeft?: () => void;
-  /** Fires `onWatchedParticipantLeft` when a remote participant with this display name leaves. */
   watchUserName?: string;
   onWatchedParticipantLeft?: () => void;
-  /** Unused on web — accepted so the parent can pass StyleSheet.absoluteFill without a TS error. */
+  /** Unused on web — accepted so parent can pass StyleSheet.absoluteFill without TS error. */
   style?: unknown;
 }
 
-// Paathshala dark theme — applied at createFrame() time so it's baked into the
-// initial Prebuilt render instead of being patched in afterwards.
 const DAILY_THEME = {
   colors: {
     accent: "#E11D48",
@@ -29,6 +25,26 @@ const DAILY_THEME = {
   },
 };
 
+/**
+ * Module-level Daily frame singleton.
+ * Daily.js only allows ONE frame per browser page.  Keeping the reference here
+ * lets every mount/unmount cycle destroy the previous frame before creating a
+ * new one — even if React unmounts and remounts the component faster than the
+ * async cleanup has time to settle.
+ */
+let _activeFrame: any = null;
+
+async function destroyActiveFrame() {
+  if (_activeFrame) {
+    try {
+      await _activeFrame.destroy();
+    } catch {
+      // ignore — may have already been destroyed
+    }
+    _activeFrame = null;
+  }
+}
+
 export default function DailyEmbed({
   roomUrl,
   displayName,
@@ -39,36 +55,33 @@ export default function DailyEmbed({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  // Keep callbacks in a stable ref so event listeners never become stale.
   const cbRef = useRef({ onLeft, watchUserName, onWatchedParticipantLeft });
   cbRef.current = { onLeft, watchUserName, onWatchedParticipantLeft };
 
   useEffect(() => {
     if (!roomUrl || !containerRef.current) return;
 
-    let destroyed = false;
-    let callFrame: any = null;
+    let cancelled = false;
 
-    // Dynamic import keeps @daily-co/daily-js OUT of the render-phase module
-    // graph entirely.  Any webpack/bundler incompatibility that would previously
-    // crash the classroom screen during its initial render now stays inside this
-    // async effect and surfaces as a caught error instead.
     (async () => {
       try {
         const { default: DailyIframe } = await import("@daily-co/daily-js");
 
-        if (destroyed || !containerRef.current) return;
+        // Always destroy any pre-existing frame before creating a new one.
+        await destroyActiveFrame();
 
-        callFrame = DailyIframe.createFrame(containerRef.current, {
+        if (cancelled || !containerRef.current) return;
+
+        const callFrame = DailyIframe.createFrame(containerRef.current, {
           iframeStyle: { width: "100%", height: "100%", border: "0" },
           showLeaveButton: true,
           showFullscreenButton: true,
           theme: DAILY_THEME as any,
         });
 
-        // Permissions policy — required on iOS Safari to unblock getUserMedia
-        // inside the cross-origin Daily iframe.
-        const iframe = callFrame.iframe?.();
+        _activeFrame = callFrame;
+
+        const iframe = (callFrame as any).iframe?.();
         if (iframe) {
           iframe.allow = "camera; microphone; autoplay; display-capture";
           iframe.style.border = "none";
@@ -77,7 +90,8 @@ export default function DailyEmbed({
 
         callFrame.on("participant-left", (event: any) => {
           const leftName = event?.participant?.user_name;
-          const { watchUserName: watched, onWatchedParticipantLeft: cb } = cbRef.current;
+          const { watchUserName: watched, onWatchedParticipantLeft: cb } =
+            cbRef.current;
           if (watched && leftName === watched) cb?.();
         });
 
@@ -87,7 +101,7 @@ export default function DailyEmbed({
 
         await callFrame.join({ url: roomUrl, userName: displayName });
       } catch (err: unknown) {
-        if (!destroyed) {
+        if (!cancelled) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error("[DailyEmbed] failed:", msg);
           setJoinError(msg);
@@ -96,8 +110,8 @@ export default function DailyEmbed({
     })();
 
     return () => {
-      destroyed = true;
-      try { callFrame?.destroy(); } catch {}
+      cancelled = true;
+      destroyActiveFrame();
     };
   }, [roomUrl, displayName]);
 
@@ -128,7 +142,14 @@ export default function DailyEmbed({
       ),
       React.createElement(
         "p",
-        { style: { fontSize: "11px", color: "#555", maxWidth: "320px", wordBreak: "break-all" } },
+        {
+          style: {
+            fontSize: "11px",
+            color: "#555",
+            maxWidth: "320px",
+            wordBreak: "break-all",
+          },
+        },
         joinError
       )
     );
