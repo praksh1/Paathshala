@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
-export default function ClassroomDoor() {
+// We gave the door a special key called "openTheDoor"
+export default function ClassroomDoor({ openTheDoor }: any) {
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.button}>
+      {/* When the button is pressed, it uses the key! */}
+      <TouchableOpacity style={styles.button} onPress={openTheDoor}>
         <Text style={styles.buttonText}>🚪 Enter Video Class</Text>
       </TouchableOpacity>
     </View>
@@ -17,7 +19,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   button: {
-    backgroundColor: '#4CAF50', // This makes our button a nice, friendly green!
+    backgroundColor: '#4CAF50',
     padding: 15,
     borderRadius: 10,
   },
