@@ -1,5 +1,14 @@
 {
   "expo": {
+    "plugins": [
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Allow the app to access your camera for video classrooms.",
+          "microphonePermission": "Allow the app to access your microphone for audio sessions."
+        }
+      ]
+    ],
     "name": "Guru",
     "slug": "guru",
     "version": "1.0.0",
