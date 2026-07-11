@@ -30,7 +30,7 @@ import DailyEmbed from "@/components/DailyEmbed";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "react-native";
-import { WebView } from "react-native-webview";
+import PdfViewer from "@/components/PdfViewer";
 
 const SCREEN_W = Dimensions.get("window").width;
 type Mode = "whiteboard" | "participants" | "chat";
@@ -609,13 +609,7 @@ export default function Classroom() {
                     },
                   })
                 ) : localPdfUri !== null ? (
-                  <WebView
-                    source={{ uri: localPdfUri }}
-                    style={StyleSheet.absoluteFill}
-                    originWhitelist={["*"]}
-                    allowFileAccess
-                    javaScriptEnabled={false}
-                  />
+                  <PdfViewer uri={localPdfUri} style={StyleSheet.absoluteFill} />
                 ) : null
               ) : (
                 /* Drawing canvas — shown when material is an image overlay or board is blank */

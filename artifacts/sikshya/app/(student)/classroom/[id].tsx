@@ -22,6 +22,7 @@ import type { Student } from "@/context/AuthContext";
 import { apiGet } from "@/utils/api";
 import { useClassroomSocket, type DrawPath } from "@/hooks/useClassroomSocket";
 import DailyEmbed from "@/components/DailyEmbed";
+import PdfViewer from "@/components/PdfViewer";
 import { Image } from "react-native";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -271,17 +272,7 @@ export default function StudentClassroom() {
               <Image source={{ uri: material.dataUrl }} style={StyleSheet.absoluteFill} resizeMode="contain" />
             )}
             {material?.kind === "pdf" && (
-              Platform.OS === "web"
-                ? React.createElement("iframe", {
-                    src: material.dataUrl,
-                    title: "Shared PDF",
-                    style: {
-                      position: "absolute", top: 0, left: 0,
-                      width: "100%", height: "100%",
-                      border: "none",
-                    },
-                  })
-                : null
+              <PdfViewer uri={material.dataUrl} style={StyleSheet.absoluteFill} />
             )}
             <Svg style={StyleSheet.absoluteFill}>
               {remotePaths.map((p, i) => renderShape(p, i))}
