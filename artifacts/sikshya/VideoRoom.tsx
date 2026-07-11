@@ -1,16 +1,27 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Daily from '@daily-co/react-native-daily-js';
+import Daily, { DailyMediaView } from '@daily-co/react-native-daily-js';
 
 export default function VideoRoom() {
+  const [antenna, setAntenna] = useState<any>(null);
+  const [myCameraTrack, setMyCameraTrack] = useState<any>(null);
   
-  // When someone walks in, this plugs the antenna into the wall automatically!
   useEffect(() => {
-    const callObject = Daily.createCallObject();
+    const newAntenna = Daily.createCallObject();
     
-    // When they leave the room, this unplugs it to save power!
+    // This tells the antenna to listen for the camera turning on!
+    newAntenna.on('participant-updated', (event) => {
+      if (event.participant.local) {
+        setMyCameraTrack(event.participant.tracks.video.persistentTrack);
+      }
+    });
+
+    // This turns on the camera automatically!
+    newAntenna.join({ url: 'YOUR_DAILY_ROOM_URL_HERE' });
+    setAntenna(newAntenna);
+    
     return () => {
-      callObject.destroy();
+      newAntenna.destroy();
     };
   }, []);
 
@@ -18,40 +29,21 @@ export default function VideoRoom() {
     <View style={styles.room}>
       <Text style={styles.titleText}>Class is in Session!</Text>
       
-      {/* This is our brand-new TV screen hanging on the wall */}
       <View style={styles.tvScreen}>
-        <Text style={styles.waitingText}>📷 The camera will turn on here!</Text>
+        {/* We are plugging the camera into the TV here! */}
+        <DailyMediaView 
+          videoTrack={myCameraTrack} 
+          audioTrack={null}
+          style={styles.glassScreen} 
+        />
       </View>
-      
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  room: {
-    flex: 1,
-    backgroundColor: '#1e1e1e', // A dark movie-theater background
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  titleText: {
-    color: '#ffffff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 30,
-  },
-  tvScreen: {
-    width: 300,
-    height: 400,
-    backgroundColor: '#000000', // The dark glass of the TV
-    borderColor: '#4CAF50',     // A cool green border around the TV
-    borderWidth: 4,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  waitingText: {
-    color: '#cccccc',
-    fontSize: 16,
-  },
+  room: { flex: 1, backgroundColor: '#1e1e1e', justifyContent: 'center', alignItems: 'center' },
+  titleText: { color: '#ffffff', fontSize: 24, fontWeight: 'bold', marginBottom: 30 },
+  tvScreen: { width: 300, height: 400, backgroundColor: '#000', borderColor: '#4CAF50', borderWidth: 4, borderRadius: 20, overflow: 'hidden' },
+  glassScreen: { width: '100%', height: '100%' },
 });
