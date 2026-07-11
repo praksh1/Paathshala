@@ -10,21 +10,6 @@ interface Props {
   style?: unknown;
 }
 
-const DAILY_THEME = {
-  colors: {
-    accent: "#E11D48",
-    accentText: "#FFFFFF",
-    background: "#111111",
-    backgroundAccent: "#1A1A1A",
-    baseText: "#FFFFFF",
-    border: "transparent",
-    mainAreaBg: "#111111",
-    mainAreaBgAccent: "#111111",
-    mainAreaText: "#FFFFFF",
-    supportiveText: "#AAAAAA",
-  },
-};
-
 /**
  * Module-level Daily frame singleton.
  * Daily.js only allows ONE frame per browser page.  Keeping the reference here
@@ -76,7 +61,6 @@ export default function DailyEmbed({
           iframeStyle: { width: "100%", height: "100%", border: "0" },
           showLeaveButton: true,
           showFullscreenButton: true,
-          theme: DAILY_THEME as any,
         });
 
         _activeFrame = callFrame;
