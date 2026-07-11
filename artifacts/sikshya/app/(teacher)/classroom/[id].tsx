@@ -440,6 +440,14 @@ export default function Classroom() {
     setIsRecording((r) => !r);
   };
 
+  // Called when the teacher clicks Daily's native Leave button. No confirmation dialog
+  // here — the user already made an explicit in-call gesture, so we just clean up
+  // immediately: mark the session completed and return to the dashboard.
+  const handleDailyLeft = useCallback(async () => {
+    try { await apiPatch(`/sessions/${id}`, { status: "completed" }); } catch {}
+    router.back();
+  }, [id]);
+
   const endSession = async () => {
     const doEnd = async () => {
       try { await apiPatch(`/sessions/${id}`, { status: "completed" }); } catch {}
@@ -541,7 +549,7 @@ export default function Classroom() {
             is the only reliable way to keep it from clashing with the chat tab. */}
         <View style={[s.videoArea, videoExpanded && s.videoAreaExpanded, mode === "chat" && s.videoAreaHidden]}>
           {roomUrl ? (
-            <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} />
+            <DailyEmbed roomUrl={roomUrl} displayName={teacherName} style={StyleSheet.absoluteFill} onLeft={handleDailyLeft} />
           ) : (
             <View style={[StyleSheet.absoluteFill, s.permissionGate]}>
               <ActivityIndicator color="#fff" />

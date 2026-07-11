@@ -1,14 +1,50 @@
 ---
-name: Daily.co embed replacing Jitsi
-description: Platform-split Daily.co Prebuilt embed pattern (web iframe / native WebView) and how teacher-left detection works without server-issued tokens.
+name: Daily Prebuilt embed pattern
+description: Platform-split DailyEmbed component (web createFrame / native WebView), lifecycle sync via left-meeting, theming, and iOS Safari permission fix.
 ---
 
-Sikshya's classroom video moved from Jitsi to Daily.co Prebuilt, keeping the same platform-split component shape that worked for Jitsi:
-- Web: load `@daily-co/daily-js` from the unpkg CDN, `DailyIframe.createFrame` into a plain `<div>`, `callFrame.join({ url, userName })`.
-- Native (iOS/Android): no native SDK/dev-client needed — a `WebView` loads a small inline HTML page that does the same CDN load + `createFrame` + `join`, and bridges events back to React Native via `window.ReactNativeWebView.postMessage`.
+## Architecture
+`DailyEmbed.web.tsx` — uses `DailyIframe.createFrame()` from `@daily-co/daily-js` npm package (not CDN). Manages its own iframe inside a plain `<div>`.
+`DailyEmbed.tsx` — native (Expo Go compatible): `react-native-webview` loading the Daily Prebuilt room URL directly. No custom dev client needed.
 
-**Why:** avoids adding a native Daily SDK dependency (would require a custom dev client, breaking Expo Go compatibility) while still getting a fully native permission prompt and no PiP/floating-window issues, matching the constraints that shaped the original Jitsi embed.
+**Why:** avoids a native Daily SDK dependency (which would break Expo Go compatibility). WebView approach still gets native permission prompts and no PiP issues.
 
-**Teacher-left detection:** without a server that mints Daily meeting tokens (API key not wired up yet — see `EXPO_PUBLIC_DAILY_DOMAIN` in `utils/daily.ts`), Daily's `participant-left` event has no reliable `owner`/role field. Detection instead matches `event.participant.user_name` against the known teacher display name passed in as a `watchUserName` prop from the student screen. If/when server-issued meeting tokens are added, prefer switching to the token's owner claim over name-matching (name-matching breaks if two participants share a display name).
+## Critical config (web)
 
-**How to apply:** if Daily.co tokens/API key get wired in later, revisit `DailyEmbed.tsx` / `DailyEmbed.web.tsx` to use `event.participant.owner` instead of name-matching, and update `getDailyRoomUrl` in `utils/daily.ts` to use real room-creation API calls instead of the domain+sanitized-name URL guess.
+```ts
+const callFrame = DailyIframe.createFrame(containerRef.current, {
+  iframeStyle: { width: "100%", height: "100%", border: "0" },
+  showLeaveButton: true,   // MUST be true — this is what fires 'left-meeting'
+  showFullscreenButton: true,
+  theme: { colors: { accent: "#E11D48", background: "#111111", ... } } as any,
+});
+
+// After createFrame, set allow on the underlying iframe.
+// Without this, iOS Safari's Permissions Policy blocks getUserMedia inside the
+// cross-origin Daily iframe — causes an infinite permission request loop.
+const iframe = callFrame.iframe();
+if (iframe) {
+  iframe.allow = "camera; microphone; autoplay; display-capture";
+  iframe.style.border = "none";
+}
+```
+
+## Lifecycle sync: 'left-meeting'
+`callFrame.on('left-meeting', callback)` fires the instant the local user exits the call (Daily's native Leave button or any other exit path). This is the single source of truth for app cleanup + redirect. No polling, no double-press required.
+
+- On native, bridge JS (`injectedJavaScript`) relays `left-meeting` via `postMessage` → `handleMessage` → `onLeft?.()`.
+- **Store all callbacks in a stable `useRef`** — never in effect deps — to prevent frame destroy/recreate on prop changes.
+
+## Theming
+- **Web**: pass `theme: { colors: {...} }` to `createFrame()` options at creation time. Cannot be changed post-creation.
+- **Native WebView**: inject CSS custom properties via `injectedJavaScript`:
+  ```js
+  :root{ --daily-color-bg:#111; --daily-color-accent:#E11D48; ... }
+  body,.DailyApp{ background:#111!important; }
+  ```
+
+## Permission gate: do NOT add one
+Do not gate `DailyEmbed` mount on a `useMediaPermissions` check. Daily Prebuilt handles its own permission UI. Mounting immediately when `roomUrl` is available avoids the iOS Safari infinite-permission-loop the gate caused.
+
+## Teacher-left detection (student view)
+Without server-issued Daily meeting tokens, `participant-left` matches `event.participant.user_name` against `watchUserName` prop (teacher's display name). If tokens are wired in later, prefer `event.participant.owner` over name-matching.

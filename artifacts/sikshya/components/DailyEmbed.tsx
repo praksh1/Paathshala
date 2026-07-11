@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useCallback, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import type { StyleProp, ViewStyle } from "react-native";
 import { WebView } from "react-native-webview";
@@ -7,20 +7,43 @@ interface Props {
   roomUrl: string;
   displayName: string;
   style?: StyleProp<ViewStyle>;
+  /** Called the instant the local user exits the Daily call (native Leave button or otherwise). */
+  onLeft?: () => void;
+  /** If set, fires `onWatchedParticipantLeft` when a remote participant with this
+   * display name leaves the call — used to notify students if the teacher drops. */
   watchUserName?: string;
   onWatchedParticipantLeft?: () => void;
 }
 
-// Small bridge script: relay participant-left events back to React Native so the
-// student view can detect when the teacher drops. No camera/permission logic here —
-// Daily Prebuilt handles its own permission UI natively inside the WebView.
+// Injected once after the WebView loads. Responsibilities:
+//   1. Apply Paathshala dark-theme CSS overrides to the Daily Prebuilt shell.
+//   2. Poll for the Daily call instance and, once found, attach event listeners
+//      that relay 'participant-left' and 'left-meeting' to React Native via postMessage.
+//
+// CSS variables targeting Daily Prebuilt's documented custom-property API are set on :root
+// so they cascade into any sub-frames that Daily renders inside the Prebuilt page.
 const BRIDGE_JS = `
 (function () {
+  var s = document.createElement('style');
+  s.textContent = [
+    ':root{',
+    '  --daily-color-bg:#111111;',
+    '  --daily-color-bg-mid:#1a1a1a;',
+    '  --daily-color-accent:#E11D48;',
+    '  --daily-color-accent-text:#ffffff;',
+    '  --daily-color-base-text:#ffffff;',
+    '  --daily-color-border:transparent;',
+    '}',
+    'body,#app,.DailyApp{background:#111111!important;}',
+  ].join('');
+  (document.head || document.documentElement).appendChild(s);
+
   function post(type, payload) {
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: type, payload: payload }));
     }
   }
+
   function attach() {
     try {
       var frame =
@@ -30,11 +53,20 @@ const BRIDGE_JS = `
           window.DailyIframe.getCallInstance());
       if (frame && frame.on && !frame.__sikshyaBridged) {
         frame.__sikshyaBridged = true;
+
         frame.on('participant-left', function (event) {
           post('participant-left', {
             userName: event && event.participant && event.participant.user_name,
           });
         });
+
+        // 'left-meeting' fires the instant the local user exits — whether they tapped
+        // Daily's native red Leave button or the session ended. Relay it so the app
+        // can clean up state and redirect in a single step, no double-press required.
+        frame.on('left-meeting', function () {
+          post('left-meeting', {});
+        });
+
         return;
       }
     } catch (e) {}
@@ -49,26 +81,31 @@ export default function DailyEmbed({
   roomUrl,
   displayName,
   style,
+  onLeft,
   watchUserName,
   onWatchedParticipantLeft,
 }: Props) {
-  const watchRef = useRef({ watchUserName, onWatchedParticipantLeft });
-  watchRef.current = { watchUserName, onWatchedParticipantLeft };
+  // Stable ref: event callbacks always see current props without being stale closures,
+  // and without triggering a WebView remount when props change.
+  const cbRef = useRef({ onLeft, watchUserName, onWatchedParticipantLeft });
+  cbRef.current = { onLeft, watchUserName, onWatchedParticipantLeft };
+
+  const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.type === "participant-left") {
+        const { watchUserName: watched, onWatchedParticipantLeft: cb } = cbRef.current;
+        if (watched && msg.payload?.userName === watched) cb?.();
+      } else if (msg.type === "left-meeting") {
+        cbRef.current.onLeft?.();
+      }
+    } catch {}
+  }, []);
 
   if (!roomUrl) return null;
 
   const url = new URL(roomUrl);
   url.searchParams.set("userName", displayName);
-
-  const handleMessage = (event: { nativeEvent: { data: string } }) => {
-    try {
-      const msg = JSON.parse(event.nativeEvent.data);
-      if (msg.type === "participant-left") {
-        const { watchUserName: watched, onWatchedParticipantLeft: cb } = watchRef.current;
-        if (watched && msg.payload?.userName === watched) cb?.();
-      }
-    } catch {}
-  };
 
   return (
     <View style={[style, styles.container]}>
@@ -100,10 +137,10 @@ const styles = StyleSheet.create({
     left: 0,
     width: "100%",
     height: "100%",
-    backgroundColor: "#000",
+    backgroundColor: "#111111",
   },
   webview: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: "#111111",
   },
 });

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -150,6 +150,12 @@ export default function StudentClassroom() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
+  // Called when the student clicks Daily's native Leave button — no confirmation needed
+  // since the user already made an explicit in-call gesture. Redirect instantly.
+  const handleDailyLeft = useCallback(() => {
+    router.back();
+  }, []);
+
   const leaveSession = () => {
     if (Platform.OS === "web") {
       if (window.confirm("Leave Session?\n\nAre you sure?")) router.back();
@@ -240,6 +246,7 @@ export default function StudentClassroom() {
               roomUrl={roomUrl}
               displayName={studentName}
               style={StyleSheet.absoluteFill}
+              onLeft={handleDailyLeft}
               watchUserName={session?.teacherName}
               onWatchedParticipantLeft={notifyTeacherLeft}
             />
