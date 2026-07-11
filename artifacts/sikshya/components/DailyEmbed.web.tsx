@@ -11,22 +11,27 @@ interface Props {
 }
 
 /**
- * Module-level Daily frame singleton.
- * Daily.js only allows ONE frame per browser page.  Keeping the reference here
- * lets every mount/unmount cycle destroy the previous frame before creating a
- * new one — even if React unmounts and remounts the component faster than the
- * async cleanup has time to settle.
+ * Module-level Daily singleton state.
+ *
+ * Daily.js enforces exactly ONE frame per page at a time.  The challenge is
+ * that React cleanup functions are synchronous, but `callFrame.destroy()` is
+ * async.  This means a new effect can fire before the old frame's `destroy()`
+ * has fully resolved — causing the "Duplicate DailyIframe instances are not
+ * allowed" error.
+ *
+ * Solution: `_pendingDestroy` holds the in-flight destroy promise.  The new
+ * effect always `await`s it before calling `createFrame()`, regardless of
+ * whether the destroy was started by the cleanup or by the effect itself.
  */
 let _activeFrame: any = null;
+let _pendingDestroy: Promise<void> = Promise.resolve();
 
-async function destroyActiveFrame() {
+/** Fire-and-forget: clears _activeFrame and records the destroy promise. */
+function scheduleDestroy() {
   if (_activeFrame) {
-    try {
-      await _activeFrame.destroy();
-    } catch {
-      // ignore — may have already been destroyed
-    }
+    const frame = _activeFrame;
     _activeFrame = null;
+    _pendingDestroy = frame.destroy().catch(() => {});
   }
 }
 
@@ -52,8 +57,14 @@ export default function DailyEmbed({
       try {
         const { default: DailyIframe } = await import("@daily-co/daily-js");
 
-        // Always destroy any pre-existing frame before creating a new one.
-        await destroyActiveFrame();
+        // Kick off destroy of any existing frame and wait for it to fully
+        // complete.  This covers two cases:
+        //   1. The cleanup from the previous mount already called scheduleDestroy()
+        //      and the promise is still in flight — we just await it.
+        //   2. A frame somehow survived without going through cleanup — we
+        //      destroy it here before proceeding.
+        scheduleDestroy();
+        await _pendingDestroy;
 
         if (cancelled || !containerRef.current) return;
 
@@ -95,7 +106,7 @@ export default function DailyEmbed({
 
     return () => {
       cancelled = true;
-      destroyActiveFrame();
+      scheduleDestroy(); // synchronous: clears _activeFrame, stores destroy promise
     };
   }, [roomUrl, displayName]);
 
