@@ -17,7 +17,7 @@ export default function VideoRoom() {
     });
 
     // This turns on the camera automatically!
-    newAntenna.join({ url: 'YOUR_DAILY_ROOM_URL_HERE' });
+    newAntenna.join({ url: 'hometuition.daily.co' });
     setAntenna(newAntenna);
     
     return () => {
